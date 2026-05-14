@@ -3,8 +3,34 @@
  */
 const BY_SECTION = {
   thalis: [
-    { name: "Jaanki Special Thali", priceRupees: null },
-    { name: "Deluxe Thali", priceRupees: 360 },
+    {
+      name: "Jaanki Special Thali",
+      priceRupees: 560,
+      includes: [
+        "Kaju Masala",
+        "Paneer Gravy",
+        "Dal Makhni",
+        "Mix Veg",
+        "Kashmiri Pulav",
+        "1 Lacchha Paratha",
+        "1 Stuffed Naan",
+        "1 Missi Roti",
+        "Shahi Tukda / Gulab Jamun",
+      ],
+    },
+    {
+      name: "Deluxe Thali",
+      priceRupees: 360,
+      includes: [
+        "Paneer Gravy",
+        "Dal Fry",
+        "Mix Veg",
+        "Jeera Rice",
+        "1 Lacchha Paratha",
+        "1 Butter Naan",
+        "Gulab Jamun",
+      ],
+    },
   ],
   bread: [
     ["Plain Roti", 25],
@@ -168,5 +194,6 @@ const BY_SECTION = {
 
 exports.getLineItems = (sectionId) => {
   const rows = BY_SECTION[sectionId];
-  return rows ? rows.map((r) => ({ ...r })) : null;
+  if (!rows) return null;
+  return rows.map((r) => ({ ...r }));
 };

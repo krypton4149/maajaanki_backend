@@ -42,12 +42,17 @@ async function resolveMenuListRows() {
 }
 
 function buildNumberedCategoryMessage(title, catalogRows) {
-  const lines = catalogRows.map((r, i) => {
+  const lines = catalogRows.flatMap((r, i) => {
     const p =
       r.priceRupees == null || Number.isNaN(Number(r.priceRupees))
         ? "Ask"
         : `₹${Number(r.priceRupees)}`;
-    return `${i + 1}. ${r.name} — ${p}`;
+    const head = `${i + 1}. ${r.name} — ${p}`;
+    if (Array.isArray(r.includes) && r.includes.length) {
+      const sub = r.includes.map((x) => `   • ${x}`);
+      return [head, ...sub];
+    }
+    return [head];
   });
   return [
     "═".repeat(22),
