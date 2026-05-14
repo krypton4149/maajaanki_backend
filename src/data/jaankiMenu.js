@@ -350,7 +350,9 @@ function getWelcomeBody() {
   return [
     "Welcome to Jaanki Mahal.",
     "",
-    "Tap Browse menu, then choose a section for items and prices (INR).",
+    "Tap Browse menu → pick a category → add dishes (e.g. 2 x 3 or 2 x Veg Biryani).",
+    "",
+    "Then type CART, then CHECKOUT for name, address & phone.",
     "",
     "Taxes as applicable. Subject to availability.",
   ].join("\n");

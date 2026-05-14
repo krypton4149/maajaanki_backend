@@ -4,9 +4,10 @@ const {
 } = require("../services/whatsappService");
 const { MENU_SECTIONS, getSectionById } = require("../data/jaankiMenu");
 const menuDbService = require("../services/menuDbService");
-const orderFlow = require("../services/orderFlow");
+const shoppingFlow = require("../services/shoppingFlow");
 const { createOrder, isEnabled: isOrderDbEnabled } = require("../services/orderService");
 const { isUuid } = require("../utils/isUuid");
+const { getLineItems: getStaticLineItems } = require("../data/staticMenuCatalog");
 
 const MENU_KEYWORDS = new Set([
   "hi",
@@ -40,6 +41,25 @@ async function resolveMenuListRows() {
   return staticListRows();
 }
 
+function buildNumberedCategoryMessage(title, catalogRows) {
+  const lines = catalogRows.map((r, i) => {
+    const p =
+      r.priceRupees == null || Number.isNaN(Number(r.priceRupees))
+        ? "Ask"
+        : `₹${Number(r.priceRupees)}`;
+    return `${i + 1}. ${r.name} — ${p}`;
+  });
+  return [
+    "═".repeat(22),
+    String(title).toUpperCase(),
+    "═".repeat(22),
+    "",
+    ...lines,
+    "",
+    shoppingFlow.formatNumberedCatalogFooter(),
+  ].join("\n");
+}
+
 exports.handleIncomingMessage = async (message) => {
   const from = message.from;
 
@@ -47,15 +67,39 @@ exports.handleIncomingMessage = async (message) => {
     const listId = message.interactive?.list_reply?.id;
     if (listId) {
       if (isUuid(listId)) {
-        const body = await menuDbService.getCategoryMenuText(listId.trim());
-        if (body) {
-          return sendTextMessage(from, body);
+        const pack = await menuDbService.getLineItemsForCategory(
+          listId.trim()
+        );
+        if (pack?.items?.length) {
+          shoppingFlow.startShopping(from, {
+            categoryLabel: pack.categoryLabel,
+            catalog: pack.items,
+          });
+          return sendTextMessage(
+            from,
+            buildNumberedCategoryMessage(pack.categoryLabel, pack.items)
+          );
         }
         return sendTextMessage(
           from,
           "This menu section is unavailable. Type MENU to try again."
         );
       }
+
+      const staticRows = getStaticLineItems(listId);
+      if (staticRows?.length) {
+        const sec = getSectionById(listId);
+        const label = sec?.listTitle || listId;
+        shoppingFlow.startShopping(from, {
+          categoryLabel: label,
+          catalog: staticRows,
+        });
+        return sendTextMessage(
+          from,
+          buildNumberedCategoryMessage(label, staticRows)
+        );
+      }
+
       const section = getSectionById(listId);
       if (section) {
         return sendTextMessage(from, section.format());
@@ -70,17 +114,18 @@ exports.handleIncomingMessage = async (message) => {
   const text = message.text?.body;
 
   if (wantsMenu(text)) {
-    orderFlow.clearSession(from);
+    shoppingFlow.clearSession(from);
     const rows = await resolveMenuListRows();
     return sendInteractiveListMenu(from, rows);
   }
 
-  const orderHandled = await orderFlow.tryHandleOrderMessage(from, text, {
+  const shoppingHandled = await shoppingFlow.tryHandle(from, text, {
     sendTextMessage,
     isOrderEnabled: isOrderDbEnabled,
     createOrder,
+    waFrom: from,
   });
-  if (orderHandled) {
+  if (shoppingHandled) {
     return;
   }
 
@@ -89,8 +134,9 @@ exports.handleIncomingMessage = async (message) => {
     [
       "Namaste — you're chatting with Jaanki Mahal.",
       "",
-      "Type MENU (or Hi / Hello) to browse dishes.",
-      "Type ORDER to place an order (saved to our system).",
+      "Type MENU to open categories.",
+      "Pick a category, then add dishes (e.g. 2 x 5 or 2 x Veg Biryani).",
+      "CART → CHECKOUT → confirm with YES.",
     ].join("\n")
   );
 };

@@ -12,7 +12,9 @@ async function nextOrderNum(supabase) {
 
   if (error) throw error;
   const last = data?.order_num;
-  return typeof last === "number" && Number.isFinite(last) ? last + 1 : 1001;
+  const n =
+    last == null ? NaN : typeof last === "bigint" ? Number(last) : Number(last);
+  return Number.isFinite(n) ? n + 1 : 1001;
 }
 
 /**

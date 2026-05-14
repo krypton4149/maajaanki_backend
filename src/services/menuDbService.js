@@ -84,3 +84,48 @@ exports.getCategoryMenuText = async (categoryId) => {
   ];
   return lines.join("\n");
 };
+
+/**
+ * @returns {Promise<{ categoryLabel: string, items: { name: string, priceRupees: number|null }[] }|null>}
+ */
+exports.getLineItemsForCategory = async (categoryId) => {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+
+  const { data: cat, error: catErr } = await supabase
+    .from("menu_categories")
+    .select("name")
+    .eq("id", categoryId)
+    .maybeSingle();
+
+  if (catErr) return null;
+
+  let { data: items, error: itemsErr } = await supabase
+    .from("menu_items")
+    .select("name, price")
+    .eq("category_id", categoryId)
+    .order("name", { ascending: true });
+
+  if (itemsErr) {
+    const r2 = await supabase
+      .from("menu_items")
+      .select("name")
+      .eq("category_id", categoryId)
+      .order("name", { ascending: true });
+    items = r2.data;
+    itemsErr = r2.error;
+  }
+
+  if (itemsErr || !items?.length) return null;
+
+  return {
+    categoryLabel: cat?.name ? String(cat.name) : "Menu",
+    items: items.map((it) => ({
+      name: String(it.name),
+      priceRupees:
+        it.price != null && it.price !== ""
+          ? Number(it.price)
+          : null,
+    })),
+  };
+};
