@@ -64,6 +64,8 @@ exports.createOrder = async ({
   whatsapp,
   address,
   line_items_note,
+  // Cart total in ₹ — required by DB NOT NULL on `orders.total`
+  total: totalRupees,
 }) => {
   const supabase = getSupabase();
   if (!supabase) throw new Error("Supabase not configured");
@@ -72,11 +74,17 @@ exports.createOrder = async ({
     line_items_note != null ? String(line_items_note).trim() : "";
   const note = noteRaw.slice(0, 4000);
 
+  const total = Math.max(
+    0,
+    Math.round(Number(totalRupees) || 0)
+  );
+
   const base = {
     customer_name: (customer_name || "Customer").trim().slice(0, 500),
     phone: String(phone || "").replace(/\D/g, "").slice(0, 20),
     whatsapp: String(whatsapp || "").trim().slice(0, 32),
     address: (address || "").trim().slice(0, 2000),
+    total,
   };
 
   const maxOuter = 8;
