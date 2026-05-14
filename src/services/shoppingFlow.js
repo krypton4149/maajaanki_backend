@@ -146,9 +146,9 @@ function parseCheckoutDetailsBlock(text, waFrom) {
         "2) Complete delivery address\n" +
         "3) 10-digit mobile number — or type SAME to use this WhatsApp number\n\n" +
         "Example:\n" +
-        "Piyush Yadav\n" +
-        "299 Madhoganj, Shikohabad\n" +
-        "8218058950",
+        "Asha Mehta\n" +
+        "42, MG Road, Demo City - 400001\n" +
+        "9876504321",
     };
   }
   const name = lines[0];
@@ -246,9 +246,9 @@ exports.tryHandle = async (from, rawText, deps) => {
           "3) 10-digit mobile number — or type SAME to use this WhatsApp number",
           "",
           "Example:",
-          "Piyush Yadav",
-          "299 Madhoganj, Shikohabad",
-          "8218058950",
+          "Asha Mehta",
+          "42, MG Road, Demo City - 400001",
+          "9876504321",
         ].join("\n")
       );
       return true;
