@@ -4,9 +4,39 @@ exports.clearSession = (from) => {
   sessions.delete(from);
 };
 
+/**
+ * When user opens MENU: keep cart across categories; only drop checkout progress.
+ */
+exports.onMenuOpened = (from) => {
+  const s = sessions.get(from);
+  if (!s) return;
+  const phase = s.phase || "";
+  if (phase.startsWith("checkout")) {
+    sessions.set(from, {
+      phase: "shop",
+      categoryLabel: s.categoryLabel || "",
+      catalog: Array.isArray(s.catalog) ? s.catalog : [],
+      cart: Array.isArray(s.cart) ? s.cart.map((c) => ({ ...c })) : [],
+    });
+    return;
+  }
+  if (phase === "shop" && (!s.cart || s.cart.length === 0)) {
+    sessions.delete(from);
+  }
+};
+
 exports.hasSession = (from) => sessions.has(from);
 
 exports.startShopping = (from, { categoryLabel, catalog }) => {
+  const existing = sessions.get(from);
+  const keepCart =
+    existing &&
+    existing.phase === "shop" &&
+    Array.isArray(existing.cart) &&
+    existing.cart.length > 0
+      ? existing.cart.map((c) => ({ ...c }))
+      : [];
+
   const numbered = catalog.map((row, i) => ({
     num: i + 1,
     name: row.name,
@@ -16,7 +46,7 @@ exports.startShopping = (from, { categoryLabel, catalog }) => {
     phase: "shop",
     categoryLabel,
     catalog: numbered,
-    cart: [],
+    cart: keepCart,
   });
 };
 
@@ -129,7 +159,7 @@ function formatCatalogFooter() {
     "• 2 x Veg Biryani  → by name",
     "CART — bag & total",
     "CHECKOUT — name, address & phone (one reply)",
-    "MENU — categories",
+    "MENU — more categories (your bag is kept)",
   ].join("\n");
 }
 
@@ -214,7 +244,7 @@ exports.tryHandle = async (from, rawText, deps) => {
           formatCart(s.cart),
           "",
           "CHECKOUT — send name, address & phone in one reply",
-          "MENU — categories",
+          "MENU — more categories (your bag is kept)",
         ].join("\n")
       );
       return true;

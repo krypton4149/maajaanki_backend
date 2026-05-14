@@ -114,7 +114,7 @@ exports.handleIncomingMessage = async (message) => {
   const text = message.text?.body;
 
   if (wantsMenu(text)) {
-    shoppingFlow.clearSession(from);
+    shoppingFlow.onMenuOpened(from);
     const rows = await resolveMenuListRows();
     return sendInteractiveListMenu(from, rows);
   }

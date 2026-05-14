@@ -351,6 +351,7 @@ function getWelcomeBody() {
     "Welcome to Jaanki Mahal.",
     "",
     "Tap Browse menu → pick a category → add dishes (e.g. 2 x 3 or 2 x Veg Biryani).",
+    "You can open MENU again to add from other categories — your cart is kept.",
     "",
     "Then type CART, then CHECKOUT — send name, address & phone in one message (3 lines).",
     "",
