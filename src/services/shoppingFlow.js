@@ -338,6 +338,7 @@ exports.tryHandle = async (from, rawText, deps) => {
         address: s.checkout.address,
         line_items_note: note.slice(0, 4000),
         total,
+        orderLines: s.cart,
       });
       sessions.delete(from);
       await sendTextMessage(

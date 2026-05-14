@@ -55,8 +55,42 @@ function wrapInsertError(error) {
 }
 
 /**
+ * @param {Array<{ name: string, priceRupees?: number|null, qty: number, lineTotal?: number }>} lines
+ */
+async function insertOrderItemsForOrder(supabase, orderId, lines) {
+  if (!Array.isArray(lines) || !lines.length) return;
+
+  const rows = lines.map((l) => {
+    const qty = Math.max(1, Math.round(Number(l.qty) || 1));
+    let unit = 0;
+    if (l.priceRupees != null && Number.isFinite(Number(l.priceRupees))) {
+      unit = Math.round(Number(l.priceRupees));
+    } else if (
+      l.lineTotal != null &&
+      Number.isFinite(Number(l.lineTotal)) &&
+      qty > 0
+    ) {
+      unit = Math.round(Number(l.lineTotal) / qty);
+    }
+
+    return {
+      order_id: orderId,
+      menu_item_id: null,
+      item_name: String(l.name || "Item").trim().slice(0, 500),
+      unit_price: Math.max(0, unit),
+      qty,
+      veg: true,
+    };
+  });
+
+  const { error } = await supabase.from("order_items").insert(rows);
+  if (error) throw wrapInsertError(error);
+}
+
+/**
  * Inserts public.orders row. Does not use .single() (avoids PGRST116 when
  * RETURNING shape differs). Retries on order_num unique violation (23505).
+ * Optionally inserts public.order_items for dashboard line display.
  */
 exports.createOrder = async ({
   customer_name,
@@ -66,6 +100,8 @@ exports.createOrder = async ({
   line_items_note,
   // Cart total in ₹ — required by DB NOT NULL on `orders.total`
   total: totalRupees,
+  /** Cart lines for `order_items` (name, qty, priceRupees, lineTotal) */
+  orderLines,
 }) => {
   const supabase = getSupabase();
   if (!supabase) throw new Error("Supabase not configured");
@@ -108,10 +144,18 @@ exports.createOrder = async ({
 
       if (!error) {
         const inserted = firstInsertedRow(data);
-        if (inserted) return inserted;
-        throw new Error(
-          "Insert returned no row (RLS on RETURNING?). Use SUPABASE_SERVICE_ROLE_KEY in server .env."
-        );
+        if (!inserted) {
+          throw new Error(
+            "Insert returned no row (RLS on RETURNING?). Use SUPABASE_SERVICE_ROLE_KEY in server .env."
+          );
+        }
+        try {
+          await insertOrderItemsForOrder(supabase, inserted.id, orderLines);
+          return inserted;
+        } catch (itemErr) {
+          await supabase.from("orders").delete().eq("id", inserted.id);
+          throw itemErr;
+        }
       }
 
       if (String(error.code) === "23505") {
