@@ -128,9 +128,59 @@ function formatCatalogFooter() {
     "• 2 x 3  → 2 plates of item #3",
     "• 2 x Veg Biryani  → by name",
     "CART — bag & total",
-    "CHECKOUT — delivery details",
+    "CHECKOUT — name, address & phone (one reply)",
     "MENU — categories",
   ].join("\n");
+}
+
+function parseCheckoutDetailsBlock(text, waFrom) {
+  const lines = text
+    .split(/\n+/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length < 3) {
+    return {
+      error:
+        "Please send 3 parts in one message (each on its own line):\n\n" +
+        "1) Your full name\n" +
+        "2) Complete delivery address\n" +
+        "3) 10-digit mobile number — or type SAME to use this WhatsApp number\n\n" +
+        "Example:\n" +
+        "Piyush Yadav\n" +
+        "299 Madhoganj, Shikohabad\n" +
+        "8218058950",
+    };
+  }
+  const name = lines[0];
+  const phoneLine = lines[lines.length - 1];
+  const address = lines.slice(1, -1).join("\n").trim();
+
+  if (!name || name.length < 2) {
+    return { error: "Line 1 should be your full name." };
+  }
+  if (!address || address.length < 4) {
+    return { error: "Line 2 (and any extra lines before phone) should be your full address." };
+  }
+
+  let phoneDigits = "";
+  if (phoneLine.toLowerCase() === "same") {
+    phoneDigits = String(waFrom || "").replace(/\D/g, "");
+    if (phoneDigits.length >= 10) phoneDigits = phoneDigits.slice(-10);
+  } else {
+    phoneDigits = phoneLine.replace(/\D/g, "");
+  }
+  if (phoneDigits.length < 10) {
+    return {
+      error:
+        "Last line: send a valid 10-digit mobile number, or SAME for this WhatsApp number.",
+    };
+  }
+
+  return {
+    name,
+    address,
+    phone: phoneDigits.slice(-10),
+  };
 }
 
 /**
@@ -163,7 +213,7 @@ exports.tryHandle = async (from, rawText, deps) => {
         [
           formatCart(s.cart),
           "",
-          "CHECKOUT — name, address & phone",
+          "CHECKOUT — send name, address & phone in one reply",
           "MENU — categories",
         ].join("\n")
       );
@@ -184,11 +234,22 @@ exports.tryHandle = async (from, rawText, deps) => {
         );
         return true;
       }
-      s.phase = "checkout_name";
+      s.phase = "checkout_details";
       sessions.set(from, s);
       await sendTextMessage(
         from,
-        "Great. What is your full name for this order?"
+        [
+          "Great — please send your delivery details in one message (use separate lines):",
+          "",
+          "1) Full name",
+          "2) Complete delivery address",
+          "3) 10-digit mobile number — or type SAME to use this WhatsApp number",
+          "",
+          "Example:",
+          "Piyush Yadav",
+          "299 Madhoganj, Shikohabad",
+          "8218058950",
+        ].join("\n")
       );
       return true;
     }
@@ -227,52 +288,24 @@ exports.tryHandle = async (from, rawText, deps) => {
     return true;
   }
 
-  if (s.phase === "checkout_name") {
+  if (s.phase === "checkout_details") {
     if (!text) {
-      await sendTextMessage(from, "Please send your name.");
-      return true;
-    }
-    s.checkout = { name: text };
-    s.phase = "checkout_address";
-    sessions.set(from, s);
-    await sendTextMessage(
-      from,
-      "Thanks. Please send your full delivery address (one message)."
-    );
-    return true;
-  }
-
-  if (s.phase === "checkout_address") {
-    if (!text) {
-      await sendTextMessage(from, "Please send your address.");
-      return true;
-    }
-    s.checkout.address = text;
-    s.phase = "checkout_phone";
-    sessions.set(from, s);
-    await sendTextMessage(
-      from,
-      "Mobile number for contact (10 digits), or type SAME to use this WhatsApp number."
-    );
-    return true;
-  }
-
-  if (s.phase === "checkout_phone") {
-    let phoneDigits = "";
-    if (lower === "same") {
-      phoneDigits = String(waFrom || from).replace(/\D/g, "");
-      if (phoneDigits.length >= 10) phoneDigits = phoneDigits.slice(-10);
-    } else {
-      phoneDigits = text.replace(/\D/g, "");
-    }
-    if (phoneDigits.length < 10) {
       await sendTextMessage(
         from,
-        "Please send a valid 10-digit mobile number, or SAME."
+        "Send your name, address, and phone (or SAME) — each on its own line."
       );
       return true;
     }
-    s.checkout.phone = phoneDigits.slice(-10);
+    const parsed = parseCheckoutDetailsBlock(text, waFrom || from);
+    if (parsed.error) {
+      await sendTextMessage(from, parsed.error);
+      return true;
+    }
+    s.checkout = {
+      name: parsed.name,
+      address: parsed.address,
+      phone: parsed.phone,
+    };
     s.phase = "checkout_confirm";
     sessions.set(from, s);
 
@@ -347,7 +380,8 @@ exports.tryHandle = async (from, rawText, deps) => {
           "✅ Order placed successfully.",
           `Order #${String(data.order_num)}`,
           "",
-          "We will contact you on WhatsApp. Thank you!",
+          "📞 We will call you shortly to confirm this order.",
+          "Thank you for choosing Jaanki Mahal — we appreciate you! 🙏",
         ].join("\n")
       );
     } catch (err) {

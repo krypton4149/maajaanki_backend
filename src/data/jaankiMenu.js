@@ -352,7 +352,7 @@ function getWelcomeBody() {
     "",
     "Tap Browse menu → pick a category → add dishes (e.g. 2 x 3 or 2 x Veg Biryani).",
     "",
-    "Then type CART, then CHECKOUT for name, address & phone.",
+    "Then type CART, then CHECKOUT — send name, address & phone in one message (3 lines).",
     "",
     "Taxes as applicable. Subject to availability.",
   ].join("\n");

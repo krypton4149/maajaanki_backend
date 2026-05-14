@@ -136,7 +136,7 @@ exports.handleIncomingMessage = async (message) => {
       "",
       "Type MENU to open categories.",
       "Pick a category, then add dishes (e.g. 2 x 5 or 2 x Veg Biryani).",
-      "CART → CHECKOUT → confirm with YES.",
+      "CART → CHECKOUT (name, address, phone in one reply) → YES to confirm.",
     ].join("\n")
   );
 };
