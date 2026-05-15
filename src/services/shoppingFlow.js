@@ -158,7 +158,7 @@ function formatCatalogFooter() {
     "• 2 x 3  → 2 plates of item #3",
     "• 2 x Veg Biryani  → by name",
     "CART — bag & total",
-    "CHECKOUT — name, address & phone (one reply)",
+    "ORDER — name, address & phone (one reply)",
     "MENU — more categories (your bag is kept)",
   ].join("\n");
 }
@@ -243,13 +243,13 @@ exports.tryHandle = async (from, rawText, deps) => {
         [
           formatCart(s.cart),
           "",
-          "CHECKOUT — send name, address & phone in one reply",
+          "ORDER — send name, address & phone in one reply",
           "MENU — more categories (your bag is kept)",
         ].join("\n")
       );
       return true;
     }
-    if (lower === "checkout") {
+    if (lower === "order" || lower === "checkout") {
       if (!s.cart.length) {
         await sendTextMessage(
           from,
@@ -290,7 +290,7 @@ exports.tryHandle = async (from, rawText, deps) => {
       sessions.set(from, s);
       const parts = ["Added to cart:", ...added.map((a) => `• ${a.qty} × ${a.name}`)];
       if (errors.length) parts.push("", "Notes:", ...errors.map((e) => `• ${e}`));
-      parts.push("", "Type CART to review total, or CHECKOUT when ready.");
+      parts.push("", "Type CART to review total, or ORDER when ready.");
       await sendTextMessage(from, parts.join("\n"));
       return true;
     }
@@ -411,7 +411,7 @@ exports.tryHandle = async (from, rawText, deps) => {
           `Order #${String(data.order_num)}`,
           "",
           "📞 We will call you shortly to confirm this order.",
-          "Thank you for choosing Jaanki Mahal — we appreciate you! 🙏",
+          "Thank you for choosing Maa Jaanki Restaurant — we appreciate you! 🙏",
         ].join("\n")
       );
     } catch (err) {

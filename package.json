@@ -4,7 +4,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "seed": "node scripts/seedDummyData.js"
+    "seed": "node scripts/seedDummyData.js",
+    "wipe:orders": "node scripts/wipeAllOrders.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.8",

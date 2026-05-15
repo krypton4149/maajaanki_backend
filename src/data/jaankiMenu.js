@@ -1,5 +1,5 @@
 /**
- * Jaanki Mahal menu — structured for WhatsApp replies (plain text, readable on mobile).
+ * Maa Jaanki Restaurant menu — structured for WhatsApp (plain text, readable on mobile).
  * Row titles must stay ≤24 chars for WhatsApp list messages.
  */
 
@@ -347,14 +347,13 @@ function getSectionById(id) {
 
 function getWelcomeBody() {
   return [
-    "Welcome to Jaanki Mahal.",
+    "Namaste 🙏 Welcome to Maa Jaanki Restaurant — we're glad you're here.",
     "",
-    "Tap Browse menu → pick a category → add dishes (e.g. 2 x 3 or 2 x Veg Biryani).",
-    "You can open MENU again to add from other categories — your cart is kept.",
+    "🍽️ Tap Browse menu → pick a section → add dishes (e.g. 2 x 3).",
+    "🛒 Type MENU anytime — your cart stays with you.",
+    "✅ Ready? CART → ORDER (name, address & phone in one reply, 3 lines).",
     "",
-    "Then type CART, then CHECKOUT — send name, address & phone in one message (3 lines).",
-    "",
-    "Taxes as applicable. Subject to availability.",
+    "Taxes as applicable · Subject to availability.",
   ].join("\n");
 }
 
@@ -362,5 +361,5 @@ module.exports = {
   MENU_SECTIONS,
   getSectionById,
   getWelcomeBody,
-  BRAND_NAME: "Jaanki Mahal",
+  BRAND_NAME: "Maa Jaanki Restaurant",
 };

@@ -137,11 +137,10 @@ exports.handleIncomingMessage = async (message) => {
   return sendTextMessage(
     from,
     [
-      "Namaste — you're chatting with Jaanki Mahal.",
+      "Namaste 🙏 Maa Jaanki Restaurant.",
       "",
-      "Type MENU to open categories.",
-      "Pick a category, then add dishes (e.g. 2 x 5 or 2 x Veg Biryani).",
-      "CART → CHECKOUT (name, address, phone in one reply) → YES to confirm.",
+      "Type MENU for categories · add like 2 x 5 or 2 x Veg Biryani.",
+      "CART → ORDER (name, address, phone in one reply) → YES to confirm.",
     ].join("\n")
   );
 };
