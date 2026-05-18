@@ -1,32 +1,56 @@
 const couponService = require("./couponService");
+const checkoutService = require("./checkoutService");
+const flowMsg = require("./orderFlowMessages");
 
 const sessions = new Map();
 
 function computeCartTotals(cart, appliedCoupon) {
-  const subtotal = cart.reduce((s, l) => s + (l.lineTotal || 0), 0);
-  const discount = appliedCoupon?.discount
-    ? Math.min(subtotal, Number(appliedCoupon.discount) || 0)
-    : 0;
-  const finalTotal = Math.max(0, Math.round(subtotal - discount));
-  return {
-    subtotal: Math.round(subtotal),
-    discount: Math.round(discount),
-    finalTotal,
-  };
+  return flowMsg.computeTotals(cart, appliedCoupon);
+}
+
+function isChoice1(text) {
+  const t = String(text || "").trim();
+  return t === "1" || /^1️⃣/.test(t) || /apply\s*coupon/i.test(t);
+}
+
+function isChoice2(text) {
+  const t = String(text || "").trim();
+  return (
+    t === "2" ||
+    /^2️⃣/.test(t) ||
+    /^(checkout|proceed|continue\s*checkout|order)$/i.test(t)
+  );
+}
+
+function isPaymentCod(text) {
+  const t = String(text || "").trim().toLowerCase();
+  return t === "1" || t === "cod" || /cash/i.test(t);
+}
+
+function isPaymentUpi(text) {
+  const t = String(text || "").trim().toLowerCase();
+  return t === "2" || t === "upi";
+}
+
+function isDone(text) {
+  return /^(done|paid|yes|y)$/i.test(String(text || "").trim());
 }
 
 exports.clearSession = (from) => {
   sessions.delete(from);
 };
 
-/**
- * When user opens MENU: keep cart across categories; only drop checkout progress.
- */
 exports.onMenuOpened = (from) => {
   const s = sessions.get(from);
   if (!s) return;
-  const phase = s.phase || "";
-  if (phase.startsWith("checkout")) {
+
+  const phase = s.phase || "shop";
+  if (phase === "shop" && (!s.cart || s.cart.length === 0)) {
+    sessions.delete(from);
+    return;
+  }
+
+  if (phase !== "shop") {
     sessions.set(from, {
       phase: "shop",
       categoryLabel: s.categoryLabel || "",
@@ -34,10 +58,6 @@ exports.onMenuOpened = (from) => {
       cart: Array.isArray(s.cart) ? s.cart.map((c) => ({ ...c })) : [],
       coupon: s.coupon || null,
     });
-    return;
-  }
-  if (phase === "shop" && (!s.cart || s.cart.length === 0)) {
-    sessions.delete(from);
   }
 };
 
@@ -46,10 +66,7 @@ exports.hasSession = (from) => sessions.has(from);
 exports.startShopping = (from, { categoryLabel, catalog }) => {
   const existing = sessions.get(from);
   const keepCart =
-    existing &&
-    existing.phase === "shop" &&
-    Array.isArray(existing.cart) &&
-    existing.cart.length > 0
+    existing && Array.isArray(existing.cart) && existing.cart.length > 0
       ? existing.cart.map((c) => ({ ...c }))
       : [];
 
@@ -58,6 +75,7 @@ exports.startShopping = (from, { categoryLabel, catalog }) => {
     name: row.name,
     priceRupees: row.priceRupees,
   }));
+
   sessions.set(from, {
     phase: "shop",
     categoryLabel,
@@ -66,57 +84,6 @@ exports.startShopping = (from, { categoryLabel, catalog }) => {
     coupon: existing?.coupon || null,
   });
 };
-
-function moneyLine(priceRupees) {
-  if (priceRupees == null || Number.isNaN(Number(priceRupees))) {
-    return "Ask";
-  }
-  return `₹${Number(priceRupees)}`;
-}
-
-function formatCart(cart, appliedCoupon) {
-  if (!cart.length) {
-    return "Your cart is empty. Add items with:\n• QTY x #  (e.g. 2 x 3  = 2 plates of item #3)\n• QTY x name  (e.g. 2 x Veg Biryani)";
-  }
-  const lines = cart.map((l, i) => {
-    const unit = moneyLine(l.priceRupees);
-    const sub =
-      l.priceRupees == null
-        ? `${l.qty} × ${l.name} (${unit} each)`
-        : `${l.qty} × ${l.name} @ ${unit} = ₹${l.lineTotal}`;
-    return `${i + 1}. ${sub}`;
-  });
-  const { subtotal, discount, finalTotal } = computeCartTotals(
-    cart,
-    appliedCoupon
-  );
-  const unknown = cart.some((l) => l.priceRupees == null);
-  const totalParts = [];
-  if (unknown) {
-    totalParts.push(
-      `Estimated subtotal (Ask items excluded): ₹${subtotal}`,
-      "Final total confirmed by restaurant."
-    );
-  } else if (appliedCoupon?.code && discount > 0) {
-    totalParts.push(
-      `Subtotal: ₹${subtotal}`,
-      `Coupon: ${appliedCoupon.code} (${appliedCoupon.label || "discount"})`,
-      `Discount: -₹${discount}`,
-      `Total: ₹${finalTotal}`
-    );
-  } else if (appliedCoupon?.code && appliedCoupon.discountType === "free_delivery") {
-    totalParts.push(
-      `Subtotal: ₹${subtotal}`,
-      `Coupon: ${appliedCoupon.code} (${appliedCoupon.label || "Free Delivery"})`,
-      `Total: ₹${finalTotal}`
-    );
-  } else {
-    totalParts.push(`Total: ₹${subtotal}`);
-  }
-  return ["🛒 YOUR CART", "──────────────", "", ...lines, "", ...totalParts].join(
-    "\n"
-  );
-}
 
 function findByNameQuery(catalog, query) {
   const q = query.trim().toLowerCase();
@@ -190,19 +157,6 @@ function parseAddsFromText(text, catalog) {
   return { added, errors };
 }
 
-function formatCatalogFooter() {
-  return [
-    "──────────────",
-    "How to order:",
-    "• 2 x 3  → 2 plates of item #3",
-    "• 2 x Veg Biryani  → by name",
-    "CART — bag & total",
-    "COUPON maajaanki20 — apply 20% off",
-    "ORDER — name, address & phone (one reply)",
-    "MENU — more categories (your bag is kept)",
-  ].join("\n");
-}
-
 function parseCouponCommand(text) {
   const trimmed = text.trim();
   const m = trimmed.match(/^coupon\s+(\S+)$/i);
@@ -216,38 +170,23 @@ function parseCouponCommand(text) {
   return null;
 }
 
-/** Pull coupon code from a checkout line (COUPON x, or bare maajaanki20). */
-function extractCouponCodeFromLine(line) {
-  const t = String(line || "").trim();
-  if (!t) return null;
-  const prefixed = t.match(/^coupon\s+(\S+)$/i);
-  if (prefixed) return prefixed[1];
-  const digitsOnly = t.replace(/\D/g, "");
-  if (digitsOnly.length >= 10 && /^\d[\d\s+\-().]*$/.test(t)) return null;
-  if (/^[a-z0-9]{4,32}$/i.test(t)) return t;
-  return null;
-}
-
-function buildCheckoutConfirmMessage(s) {
-  const cartText = formatCart(s.cart, s.coupon);
-  const lines = [
-    "Please confirm your order:",
-    "──────────────",
-    `Name: ${s.checkout.name}`,
-    `Address: ${s.checkout.address}`,
-    `Phone: ${s.checkout.phone}`,
-  ];
-  if (s.coupon?.code) {
-    lines.push(`Coupon: ${s.coupon.code} (${s.coupon.label || "discount"})`);
+async function refreshCouponOnCart(s) {
+  if (!s.coupon?.code) return;
+  const refreshed = await couponService.applyCoupon(
+    s.coupon.code,
+    computeCartTotals(s.cart, null).subtotal
+  );
+  if (refreshed.valid) {
+    s.coupon = {
+      code: refreshed.code,
+      label: refreshed.label,
+      discount: refreshed.discount,
+      discountType: refreshed.discountType,
+      couponId: refreshed.couponId,
+    };
+  } else {
+    s.coupon = null;
   }
-  lines.push("", cartText, "", "Reply YES to place the order, or NO to cancel.");
-  if (!s.coupon?.code) {
-    lines.push(
-      "",
-      "Tip: type COUPON maajaanki20 before YES for 20% off."
-    );
-  }
-  return lines.join("\n");
 }
 
 async function applyCouponToSession(s, code) {
@@ -266,19 +205,12 @@ async function applyCouponToSession(s, code) {
   const totals = computeCartTotals(s.cart, s.coupon);
   return {
     ok: true,
-    message: [
-      "✅ Coupon applied",
-      "",
-      result.label,
-      "",
-      `Subtotal: ₹${totals.subtotal}`,
-      result.discount > 0 ? `Discount: -₹${totals.discount}` : null,
-      `New total: ₹${totals.finalTotal}`,
-      "",
-      "Type CART to review · ORDER when ready.",
-    ]
-      .filter(Boolean)
-      .join("\n"),
+    message: flowMsg.buildCouponApplied({
+      label: result.label,
+      saved: totals.discount,
+      finalTotal: totals.finalTotal,
+    }),
+    phase: "post_coupon",
   };
 }
 
@@ -290,36 +222,18 @@ function parseCheckoutDetailsBlock(text, waFrom) {
   if (lines.length < 3) {
     return {
       error:
-        "Please send 3 parts in one message (each on its own line):\n\n" +
-        "1) Your full name\n" +
-        "2) Complete delivery address\n" +
-        "3) 10-digit mobile number — or type SAME to use this WhatsApp number\n\n" +
-        "Example:\n" +
-        "Asha Mehta\n" +
-        "42, MG Road, Demo City - 400001\n" +
-        "9876504321",
+        "Please send 3 lines:\n\n1) Full name\n2) Address\n3) Phone (10 digits) or SAME",
     };
   }
   const name = lines[0];
   const phoneLine = lines[lines.length - 1];
-  const middleLines = lines.slice(1, -1);
-  const addressLines = [];
-  let couponCode = null;
-  for (const line of middleLines) {
-    const code = extractCouponCodeFromLine(line);
-    if (code && !couponCode) couponCode = code;
-    else addressLines.push(line);
-  }
-  const address = addressLines.join("\n").trim();
+  const address = lines.slice(1, -1).join("\n").trim();
 
   if (!name || name.length < 2) {
     return { error: "Line 1 should be your full name." };
   }
   if (!address || address.length < 4) {
-    return {
-      error:
-        "Line 2 should be your full address (coupon on its own line is OK — e.g. maajaanki20).",
-    };
+    return { error: "Line 2 should be your complete delivery address." };
   }
 
   let phoneDigits = "";
@@ -331,8 +245,7 @@ function parseCheckoutDetailsBlock(text, waFrom) {
   }
   if (phoneDigits.length < 10) {
     return {
-      error:
-        "Last line: send a valid 10-digit mobile number, or SAME for this WhatsApp number.",
+      error: "Line 3: valid 10-digit mobile, or SAME for this WhatsApp number.",
     };
   }
 
@@ -340,8 +253,144 @@ function parseCheckoutDetailsBlock(text, waFrom) {
     name,
     address,
     phone: phoneDigits.slice(-10),
-    couponCode,
   };
+}
+
+async function showCartMenu(from, s, sendTextMessage) {
+  if (!s.cart.length) {
+    await sendTextMessage(
+      from,
+      "Your cart is empty.\n\nAdd items from the menu, then type CART."
+    );
+    return;
+  }
+  s.phase = "cart_menu";
+  sessions.set(from, s);
+  await sendTextMessage(from, flowMsg.buildCartMenu(s.cart, s.coupon));
+}
+
+async function goToCheckoutDetails(from, s, sendTextMessage) {
+  if (!s.cart.length) {
+    await sendTextMessage(from, "Your cart is empty. Add items first.");
+    return;
+  }
+  if (s.coupon?.code) {
+    const refreshed = await couponService.applyCoupon(
+      s.coupon.code,
+      computeCartTotals(s.cart, null).subtotal
+    );
+    if (!refreshed.valid) {
+      s.coupon = null;
+      sessions.set(from, s);
+      await sendTextMessage(
+        from,
+        `${refreshed.message}\n\nCoupon removed. Type CART to review.`
+      );
+      return;
+    }
+    s.coupon = {
+      code: refreshed.code,
+      label: refreshed.label,
+      discount: refreshed.discount,
+      discountType: refreshed.discountType,
+      couponId: refreshed.couponId,
+    };
+  }
+  s.phase = "checkout_details";
+  sessions.set(from, s);
+  await sendTextMessage(from, flowMsg.buildDetailsPrompt());
+}
+
+async function goToPaymentSelect(from, s, sendTextMessage) {
+  s.phase = "payment_select";
+  sessions.set(from, s);
+  await sendTextMessage(from, flowMsg.buildPaymentMenu());
+}
+
+async function finalizeOrder(from, s, deps) {
+  const { sendTextMessage, createOrder, waFrom, isOrderEnabled } = deps;
+
+  if (!isOrderEnabled()) {
+    await sendTextMessage(
+      from,
+      "Ordering is temporarily unavailable. Please call the restaurant."
+    );
+    return;
+  }
+
+  const wa = String(waFrom || from);
+  const phoneDigits = wa.replace(/\D/g, "");
+  const phone10 =
+    phoneDigits.length >= 10 ? phoneDigits.slice(-10) : phoneDigits;
+
+  const { subtotal, discount, finalTotal } = computeCartTotals(s.cart, s.coupon);
+  const paymentMethod = s.paymentMethod || "cod";
+  const paymentStatus = checkoutService.paymentStatusFor(paymentMethod);
+
+  const cartLines = s.cart.map((l) => {
+    const price =
+      l.priceRupees != null ? `₹${l.priceRupees}` : "Ask";
+    if (l.priceRupees == null) return `${l.qty} × ${l.name} (${price})`;
+    return `${l.qty} × ${l.name} @ ${price} = ₹${l.lineTotal}`;
+  });
+
+  const noteParts = [
+    `Category: ${s.categoryLabel || ""}`,
+    "",
+    ...cartLines,
+    "",
+    `Subtotal: ₹${subtotal}`,
+  ];
+  if (s.coupon?.code) {
+    noteParts.push(
+      `Coupon: ${s.coupon.code} (${s.coupon.label || ""})`,
+      `Discount: -₹${discount}`
+    );
+  }
+  noteParts.push(
+    `Total: ₹${finalTotal}`,
+    `Payment: ${paymentMethod.toUpperCase()}`,
+    "",
+    `Customer: ${s.checkout.name}`,
+    `Address: ${s.checkout.address}`,
+    `Contact: ${s.checkout.phone}`
+  );
+
+  const data = await createOrder({
+    customer_name: s.checkout.name,
+    phone: s.checkout.phone || phone10,
+    whatsapp: wa,
+    address: s.checkout.address,
+    line_items_note: noteParts.join("\n").slice(0, 4000),
+    subtotal,
+    discount_amount: discount,
+    coupon_code: s.coupon?.code || null,
+    total: finalTotal,
+    payment_method: paymentMethod,
+    payment_status: paymentStatus,
+    order_source: "whatsapp",
+    orderLines: s.cart,
+  });
+
+  if (s.coupon?.code) {
+    await couponService.incrementCouponUsage(s.coupon.code);
+  }
+
+  const orderId = flowMsg.formatOrderId(data.order_num);
+
+  await sendTextMessage(
+    from,
+    flowMsg.buildOrderConfirmed({
+      orderId,
+      cart: s.cart,
+      total: finalTotal,
+      paymentMethod,
+      coupon: s.coupon,
+      discount,
+    })
+  );
+
+  sessions.delete(from);
 }
 
 /**
@@ -355,10 +404,7 @@ exports.tryHandle = async (from, rawText, deps) => {
   if (lower === "cancel") {
     if (sessions.has(from)) {
       sessions.delete(from);
-      await sendTextMessage(
-        from,
-        "Cancelled. Type MENU to browse again."
-      );
+      await sendTextMessage(from, "Order cancelled.\n\nType MENU to start again.");
       return true;
     }
     return false;
@@ -367,13 +413,15 @@ exports.tryHandle = async (from, rawText, deps) => {
   const s = sessions.get(from);
   if (!s) return false;
 
+  // —— Shopping: add items ——
   if (s.phase === "shop") {
     const couponCmd = parseCouponCommand(text);
-    if (couponCmd?.action === "prompt") {
-      await sendTextMessage(
-        from,
-        "Send your coupon like:\nCOUPON maajaanki20\n\nType REMOVE COUPON to clear."
-      );
+    if (couponCmd?.action === "prompt" || (couponCmd?.action === "apply" && !s.cart.length)) {
+      await sendTextMessage(from, flowMsg.buildCouponPrompt());
+      if (s.cart.length) {
+        s.phase = "coupon_enter";
+        sessions.set(from, s);
+      }
       return true;
     }
     if (couponCmd?.action === "remove") {
@@ -382,159 +430,78 @@ exports.tryHandle = async (from, rawText, deps) => {
       await sendTextMessage(from, "Coupon removed from your cart.");
       return true;
     }
-    if (couponCmd?.action === "apply") {
-      if (!s.cart.length) {
-        await sendTextMessage(
-          from,
-          "Add items to your cart first, then apply a coupon.\nExample: COUPON maajaanki20"
-        );
-        return true;
-      }
+    if (couponCmd?.action === "apply" && s.cart.length) {
       const applied = await applyCouponToSession(s, couponCmd.code);
       if (!applied.ok) {
         await sendTextMessage(from, applied.message);
         return true;
       }
+      s.phase = applied.phase;
       sessions.set(from, s);
       await sendTextMessage(from, applied.message);
       return true;
     }
 
     if (lower === "cart") {
-      await sendTextMessage(
-        from,
-        [
-          formatCart(s.cart, s.coupon),
-          "",
-          "ORDER — send name, address & phone in one reply",
-          "COUPON maajaanki20 — 20% off",
-          "MENU — more categories (your bag is kept)",
-        ].join("\n")
-      );
+      await showCartMenu(from, s, sendTextMessage);
       return true;
     }
+
     if (lower === "order" || lower === "checkout") {
       if (!s.cart.length) {
-        await sendTextMessage(
-          from,
-          "Your cart is empty. Add items first, then type CART."
-        );
+        await sendTextMessage(from, "Your cart is empty. Add items first.");
         return true;
       }
-      if (s.coupon?.code) {
-        const refreshed = await couponService.applyCoupon(
-          s.coupon.code,
-          computeCartTotals(s.cart, null).subtotal
-        );
-        if (!refreshed.valid) {
-          s.coupon = null;
-          sessions.set(from, s);
-          await sendTextMessage(
-            from,
-            `${refreshed.message}\n\nCoupon removed. Type CART to see your total, then ORDER again.`
-          );
-          return true;
-        }
-        s.coupon = {
-          code: refreshed.code,
-          label: refreshed.label,
-          discount: refreshed.discount,
-          discountType: refreshed.discountType,
-          couponId: refreshed.couponId,
-        };
-        sessions.set(from, s);
-      }
-      if (!isOrderEnabled()) {
-        await sendTextMessage(
-          from,
-          "Ordering is not connected (database). Please call the restaurant."
-        );
-        return true;
-      }
-      s.phase = "checkout_details";
-      sessions.set(from, s);
-      await sendTextMessage(
-        from,
-        [
-          "Great — please send your delivery details in one message (use separate lines):",
-          "",
-          "1) Full name",
-          "2) Complete delivery address",
-          "3) Coupon (optional) — e.g. maajaanki20",
-          "4) 10-digit mobile — or SAME for this WhatsApp number",
-          "",
-          "Example:",
-          "Asha Mehta",
-          "42, MG Road, Demo City - 400001",
-          "maajaanki20",
-          "9876504321",
-          "",
-          "Or apply before ORDER: COUPON maajaanki20",
-        ].join("\n")
-      );
+      await showCartMenu(from, s, sendTextMessage);
       return true;
     }
 
     const { added, errors } = parseAddsFromText(text, s.catalog);
     if (added.length) {
       s.cart.push(...added);
-      if (s.coupon?.code) {
-        const refreshed = await couponService.applyCoupon(
-          s.coupon.code,
-          computeCartTotals(s.cart, null).subtotal
-        );
-        if (refreshed.valid) {
-          s.coupon = {
-            code: refreshed.code,
-            label: refreshed.label,
-            discount: refreshed.discount,
-            discountType: refreshed.discountType,
-            couponId: refreshed.couponId,
-          };
-        } else {
-          s.coupon = null;
-        }
-      }
+      await refreshCouponOnCart(s);
       sessions.set(from, s);
-      const parts = ["Added to cart:", ...added.map((a) => `• ${a.qty} × ${a.name}`)];
-      if (errors.length) parts.push("", "Notes:", ...errors.map((e) => `• ${e}`));
-      if (s.coupon?.code) {
-        const totals = computeCartTotals(s.cart, s.coupon);
-        parts.push(
-          "",
-          `Coupon ${s.coupon.code} active · Total: ₹${totals.finalTotal}`
+      const totals = s.coupon ? computeCartTotals(s.cart, s.coupon) : null;
+      await sendTextMessage(
+        from,
+        flowMsg.buildAddedToCart(added, totals ? { finalTotal: totals.finalTotal, coupon: s.coupon } : null)
+      );
+      if (errors.length) {
+        await sendTextMessage(
+          from,
+          ["Note:", ...errors.map((e) => `• ${e}`)].join("\n")
         );
-      } else {
-        parts.push("", "Type CART to review total, or ORDER when ready.");
       }
-      await sendTextMessage(from, parts.join("\n"));
       return true;
     }
 
     if (errors.length) {
       await sendTextMessage(
         from,
-        ["Could not add:", ...errors.map((e) => `• ${e}`), "", formatCatalogFooter()].join(
-          "\n"
-        )
+        ["Could not add:", ...errors.map((e) => `• ${e}`), "", flowMsg.buildCatalogFooter()].join("\n")
       );
       return true;
     }
 
     await sendTextMessage(
       from,
-      [
-        "Send items like:",
-        "• 2 x 5   (2 plates of #5)",
-        "• 2 x Veg Biryani",
-        "",
-        formatCatalogFooter(),
-      ].join("\n")
+      ["How to add:", "• 2 x 3  (item number)", "• 2 x Veg Momos  (by name)", "", flowMsg.buildCatalogFooter()].join("\n")
     );
     return true;
   }
 
-  if (s.phase === "checkout_details") {
+  // —— Cart menu: coupon or checkout ——
+  if (s.phase === "cart_menu") {
+    if (isChoice1(text)) {
+      s.phase = "coupon_enter";
+      sessions.set(from, s);
+      await sendTextMessage(from, flowMsg.buildCouponPrompt());
+      return true;
+    }
+    if (isChoice2(text)) {
+      await goToCheckoutDetails(from, s, sendTextMessage);
+      return true;
+    }
     const couponCmd = parseCouponCommand(text);
     if (couponCmd?.action === "apply") {
       const applied = await applyCouponToSession(s, couponCmd.code);
@@ -542,19 +509,61 @@ exports.tryHandle = async (from, rawText, deps) => {
         await sendTextMessage(from, applied.message);
         return true;
       }
+      s.phase = applied.phase;
       sessions.set(from, s);
-      await sendTextMessage(
-        from,
-        `${applied.message}\n\nThen send name, address, coupon (optional), and phone.`
-      );
+      await sendTextMessage(from, applied.message);
       return true;
     }
+    if (lower === "cart") {
+      await sendTextMessage(from, flowMsg.buildCartMenu(s.cart, s.coupon));
+      return true;
+    }
+    await sendTextMessage(
+      from,
+      "Reply *1* Apply Coupon · *2* Proceed to Checkout\n\nOr type MENU to add more items."
+    );
+    return true;
+  }
 
+  // —— Enter coupon code ——
+  if (s.phase === "coupon_enter") {
+    const couponCmd = parseCouponCommand(text);
+    const code = couponCmd?.action === "apply" ? couponCmd.code : text;
+    if (!code || code.length < 3) {
+      await sendTextMessage(from, "Please send a valid coupon code.\nExample: maajaanki20");
+      return true;
+    }
+    const applied = await applyCouponToSession(s, code);
+    if (!applied.ok) {
+      await sendTextMessage(from, `${applied.message}\n\nTry again or reply MENU.`);
+      return true;
+    }
+    s.phase = applied.phase;
+    sessions.set(from, s);
+    await sendTextMessage(from, applied.message);
+    return true;
+  }
+
+  // —— After coupon: continue checkout ——
+  if (s.phase === "post_coupon") {
+    if (isChoice1(text) || isChoice2(text)) {
+      await goToCheckoutDetails(from, s, sendTextMessage);
+      return true;
+    }
+    if (lower === "cart") {
+      s.phase = "cart_menu";
+      sessions.set(from, s);
+      await sendTextMessage(from, flowMsg.buildCartMenu(s.cart, s.coupon));
+      return true;
+    }
+    await sendTextMessage(from, "Reply *1* to Continue Checkout.");
+    return true;
+  }
+
+  // —— Delivery details ——
+  if (s.phase === "checkout_details") {
     if (!text) {
-      await sendTextMessage(
-        from,
-        "Send your name, address, optional coupon (maajaanki20), and phone — each on its own line."
-      );
+      await sendTextMessage(from, flowMsg.buildDetailsPrompt());
       return true;
     }
     const parsed = parseCheckoutDetailsBlock(text, waFrom || from);
@@ -567,151 +576,87 @@ exports.tryHandle = async (from, rawText, deps) => {
       address: parsed.address,
       phone: parsed.phone,
     };
-    if (parsed.couponCode) {
-      const applied = await applyCouponToSession(s, parsed.couponCode);
-      if (!applied.ok) {
-        await sendTextMessage(
-          from,
-          `${applied.message}\n\nSend details again without the coupon, or fix the code.`
-        );
-        return true;
-      }
-    }
-    s.phase = "checkout_confirm";
     sessions.set(from, s);
-
-    await sendTextMessage(from, buildCheckoutConfirmMessage(s));
+    await goToPaymentSelect(from, s, sendTextMessage);
     return true;
   }
 
-  if (s.phase === "checkout_confirm") {
-    const couponCmd = parseCouponCommand(text);
-    if (couponCmd?.action === "apply") {
-      const applied = await applyCouponToSession(s, couponCmd.code);
-      if (!applied.ok) {
-        await sendTextMessage(from, applied.message);
-        return true;
-      }
-      sessions.set(from, s);
-      await sendTextMessage(from, buildCheckoutConfirmMessage(s));
-      return true;
-    }
-    if (couponCmd?.action === "remove") {
-      s.coupon = null;
-      sessions.set(from, s);
-      await sendTextMessage(from, buildCheckoutConfirmMessage(s));
-      return true;
-    }
-    const bareCode = extractCouponCodeFromLine(text);
-    if (bareCode && lower !== "yes" && lower !== "y" && lower !== "no" && lower !== "n") {
-      const applied = await applyCouponToSession(s, bareCode);
-      if (!applied.ok) {
-        await sendTextMessage(from, applied.message);
-        return true;
-      }
-      sessions.set(from, s);
-      await sendTextMessage(from, buildCheckoutConfirmMessage(s));
-      return true;
-    }
+  // —— Payment method ——
+  if (s.phase === "payment_select") {
+    const config = checkoutService.getPaymentConfig();
+    const { finalTotal } = computeCartTotals(s.cart, s.coupon);
 
-    if (lower === "no" || lower === "n") {
-      sessions.delete(from);
-      await sendTextMessage(
-        from,
-        "Order not placed. Type MENU to start again."
-      );
-      return true;
-    }
-    if (lower !== "yes" && lower !== "y") {
-      await sendTextMessage(
-        from,
-        "Reply YES to confirm, NO to cancel, or COUPON maajaanki20 to apply 20% off."
-      );
-      return true;
-    }
-    try {
-      const wa = String(waFrom || from);
-      const phoneDigits = wa.replace(/\D/g, "");
-      const phone10 =
-        phoneDigits.length >= 10 ? phoneDigits.slice(-10) : phoneDigits;
-
-      const cartLines = s.cart.map((l) => {
-        const u = moneyLine(l.priceRupees);
-        if (l.priceRupees == null) return `${l.qty} × ${l.name} (${u})`;
-        return `${l.qty} × ${l.name} @ ${u} = ₹${l.lineTotal}`;
-      });
-      const { subtotal, discount, finalTotal } = computeCartTotals(
-        s.cart,
-        s.coupon
-      );
-      const noteParts = [
-        `Category: ${s.categoryLabel || ""}`,
-        "",
-        ...cartLines,
-        "",
-        `Items subtotal (where price known): ₹${subtotal}`,
-      ];
-      if (s.coupon?.code) {
-        noteParts.push(
-          `Coupon: ${s.coupon.code} (${s.coupon.label || ""})`,
-          `Discount: -₹${discount}`
+    if (isPaymentCod(text)) {
+      s.paymentMethod = "cod";
+      sessions.set(from, s);
+      await sendTextMessage(from, flowMsg.buildCodSelected());
+      try {
+        await finalizeOrder(from, s, { sendTextMessage, createOrder, waFrom, isOrderEnabled });
+      } catch (err) {
+        console.error("finalizeOrder", err?.message);
+        await sendTextMessage(
+          from,
+          "We could not save your order. Please try again or call us."
         );
       }
-      noteParts.push(
-        `Order total: ₹${finalTotal}`,
-        "",
-        `Customer: ${s.checkout.name}`,
-        `Address: ${s.checkout.address}`,
-        `Contact: ${s.checkout.phone}`
-      );
-      const note = noteParts.join("\n");
-
-      const data = await createOrder({
-        customer_name: s.checkout.name,
-        phone: s.checkout.phone || phone10,
-        whatsapp: wa,
-        address: s.checkout.address,
-        line_items_note: note.slice(0, 4000),
-        subtotal,
-        discount_amount: discount,
-        coupon_code: s.coupon?.code || null,
-        total: finalTotal,
-        payment_method: "cod",
-        payment_status: "cod_pending",
-        order_source: "whatsapp",
-        orderLines: s.cart,
-      });
-      if (s.coupon?.code) {
-        await couponService.incrementCouponUsage(s.coupon.code);
-      }
-      sessions.delete(from);
-      await sendTextMessage(
-        from,
-        [
-          "✅ Order placed successfully.",
-          `Order #${String(data.order_num)}`,
-          "",
-          "📞 We will call you shortly to confirm this order.",
-          "Thank you for choosing Maa Jaanki Restaurant — we appreciate you! 🙏",
-        ].join("\n")
-      );
-    } catch (err) {
-      console.error(
-        "createOrder failed",
-        err?.message,
-        err?.details,
-        err?.hint,
-        err?.code
-      );
-      await sendTextMessage(
-        from,
-        "We could not save your order. Please try again or call the restaurant."
-      );
+      return true;
     }
+
+    if (isPaymentUpi(text) && config.upiEnabled) {
+      s.paymentMethod = "upi";
+      s.phase = "upi_pay";
+      sessions.set(from, s);
+      const upi = config.methods.find((m) => m.id === "upi");
+      await sendTextMessage(
+        from,
+        flowMsg.buildUpiPayment({
+          upiId: upi.upiId,
+          payeeName: upi.payeeName,
+          amount: finalTotal,
+        })
+      );
+      return true;
+    }
+
+    if (isPaymentUpi(text) && !config.upiEnabled) {
+      await sendTextMessage(
+        from,
+        "UPI is not available right now.\n\nReply *1* for Cash on Delivery."
+      );
+      return true;
+    }
+
+    await sendTextMessage(
+      from,
+      config.upiEnabled
+        ? "Reply *1* Cash on Delivery · *2* UPI Payment"
+        : "Reply *1* for Cash on Delivery"
+    );
+    return true;
+  }
+
+  // —— UPI: wait for DONE ——
+  if (s.phase === "upi_pay") {
+    if (isDone(text)) {
+      try {
+        await finalizeOrder(from, s, { sendTextMessage, createOrder, waFrom, isOrderEnabled });
+      } catch (err) {
+        console.error("finalizeOrder upi", err?.message);
+        await sendTextMessage(
+          from,
+          "We could not save your order. Please try again or call us."
+        );
+      }
+      return true;
+    }
+    await sendTextMessage(
+      from,
+      "After paying via UPI, reply *DONE* to confirm.\n\nReply MENU to cancel."
+    );
     return true;
   }
 
   return false;
 };
 
-exports.formatNumberedCatalogFooter = formatCatalogFooter;
+exports.formatNumberedCatalogFooter = () => flowMsg.buildCatalogFooter();

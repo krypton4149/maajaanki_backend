@@ -347,13 +347,15 @@ function getSectionById(id) {
 
 function getWelcomeBody() {
   return [
-    "Namaste 🙏 Welcome to Maa Jaanki Restaurant — we're glad you're here.",
+    "Namaste 🙏 Welcome to Maa Jaanki Restaurant.",
     "",
-    "🍽️ Tap Browse menu → pick a section → add dishes (e.g. 2 x 3).",
-    "🛒 Type MENU anytime — your cart stays with you.",
-    "✅ Ready? CART → ORDER (name, address & phone in one reply, 3 lines).",
+    "🍽️ Tap Browse menu → pick a category → add items",
+    "   Example: 2 x Veg Momos",
     "",
-    "Taxes as applicable · Subject to availability.",
+    "🛒 Type CART when ready",
+    "   → Apply coupon · Checkout · Pay (COD / UPI)",
+    "",
+    "Your cart is saved when you browse more categories.",
   ].join("\n");
 }
 
