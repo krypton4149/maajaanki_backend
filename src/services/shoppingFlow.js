@@ -1,4 +1,19 @@
+const couponService = require("./couponService");
+
 const sessions = new Map();
+
+function computeCartTotals(cart, appliedCoupon) {
+  const subtotal = cart.reduce((s, l) => s + (l.lineTotal || 0), 0);
+  const discount = appliedCoupon?.discount
+    ? Math.min(subtotal, Number(appliedCoupon.discount) || 0)
+    : 0;
+  const finalTotal = Math.max(0, Math.round(subtotal - discount));
+  return {
+    subtotal: Math.round(subtotal),
+    discount: Math.round(discount),
+    finalTotal,
+  };
+}
 
 exports.clearSession = (from) => {
   sessions.delete(from);
@@ -17,6 +32,7 @@ exports.onMenuOpened = (from) => {
       categoryLabel: s.categoryLabel || "",
       catalog: Array.isArray(s.catalog) ? s.catalog : [],
       cart: Array.isArray(s.cart) ? s.cart.map((c) => ({ ...c })) : [],
+      coupon: s.coupon || null,
     });
     return;
   }
@@ -47,6 +63,7 @@ exports.startShopping = (from, { categoryLabel, catalog }) => {
     categoryLabel,
     catalog: numbered,
     cart: keepCart,
+    coupon: existing?.coupon || null,
   });
 };
 
@@ -57,7 +74,7 @@ function moneyLine(priceRupees) {
   return `₹${Number(priceRupees)}`;
 }
 
-function formatCart(cart) {
+function formatCart(cart, appliedCoupon) {
   if (!cart.length) {
     return "Your cart is empty. Add items with:\n• QTY x #  (e.g. 2 x 3  = 2 plates of item #3)\n• QTY x name  (e.g. 2 x Veg Biryani)";
   }
@@ -69,12 +86,34 @@ function formatCart(cart) {
         : `${l.qty} × ${l.name} @ ${unit} = ₹${l.lineTotal}`;
     return `${i + 1}. ${sub}`;
   });
-  const total = cart.reduce((s, l) => s + (l.lineTotal || 0), 0);
+  const { subtotal, discount, finalTotal } = computeCartTotals(
+    cart,
+    appliedCoupon
+  );
   const unknown = cart.some((l) => l.priceRupees == null);
-  const totalLine = unknown
-    ? `\nEstimated (items marked Ask excluded): ₹${total}\nFinal total confirmed by restaurant.`
-    : `\nTotal: ₹${total}`;
-  return ["🛒 YOUR CART", "──────────────", "", ...lines, "", totalLine].join(
+  const totalParts = [];
+  if (unknown) {
+    totalParts.push(
+      `Estimated subtotal (Ask items excluded): ₹${subtotal}`,
+      "Final total confirmed by restaurant."
+    );
+  } else if (appliedCoupon?.code && discount > 0) {
+    totalParts.push(
+      `Subtotal: ₹${subtotal}`,
+      `Coupon: ${appliedCoupon.code} (${appliedCoupon.label || "discount"})`,
+      `Discount: -₹${discount}`,
+      `Total: ₹${finalTotal}`
+    );
+  } else if (appliedCoupon?.code && appliedCoupon.discountType === "free_delivery") {
+    totalParts.push(
+      `Subtotal: ₹${subtotal}`,
+      `Coupon: ${appliedCoupon.code} (${appliedCoupon.label || "Free Delivery"})`,
+      `Total: ₹${finalTotal}`
+    );
+  } else {
+    totalParts.push(`Total: ₹${subtotal}`);
+  }
+  return ["🛒 YOUR CART", "──────────────", "", ...lines, "", ...totalParts].join(
     "\n"
   );
 }
@@ -158,9 +197,55 @@ function formatCatalogFooter() {
     "• 2 x 3  → 2 plates of item #3",
     "• 2 x Veg Biryani  → by name",
     "CART — bag & total",
+    "COUPON maajaanki20 — apply 20% off",
     "ORDER — name, address & phone (one reply)",
     "MENU — more categories (your bag is kept)",
   ].join("\n");
+}
+
+function parseCouponCommand(text) {
+  const trimmed = text.trim();
+  const m = trimmed.match(/^coupon\s+(\S+)$/i);
+  if (m) return { action: "apply", code: m[1] };
+  if (/^coupon\s*$/i.test(trimmed) || /^apply\s+coupon$/i.test(trimmed)) {
+    return { action: "prompt" };
+  }
+  if (/^(remove\s+coupon|coupon\s+remove|clear\s+coupon)$/i.test(trimmed)) {
+    return { action: "remove" };
+  }
+  return null;
+}
+
+async function applyCouponToSession(s, code) {
+  const { subtotal } = computeCartTotals(s.cart, null);
+  const result = await couponService.applyCoupon(code, subtotal);
+  if (!result.valid) {
+    return { ok: false, message: result.message };
+  }
+  s.coupon = {
+    code: result.code,
+    label: result.label,
+    discount: result.discount,
+    discountType: result.discountType,
+    couponId: result.couponId,
+  };
+  const totals = computeCartTotals(s.cart, s.coupon);
+  return {
+    ok: true,
+    message: [
+      "✅ Coupon applied",
+      "",
+      result.label,
+      "",
+      `Subtotal: ₹${totals.subtotal}`,
+      result.discount > 0 ? `Discount: -₹${totals.discount}` : null,
+      `New total: ₹${totals.finalTotal}`,
+      "",
+      "Type CART to review · ORDER when ready.",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  };
 }
 
 function parseCheckoutDetailsBlock(text, waFrom) {
@@ -237,13 +322,46 @@ exports.tryHandle = async (from, rawText, deps) => {
   if (!s) return false;
 
   if (s.phase === "shop") {
+    const couponCmd = parseCouponCommand(text);
+    if (couponCmd?.action === "prompt") {
+      await sendTextMessage(
+        from,
+        "Send your coupon like:\nCOUPON maajaanki20\n\nType REMOVE COUPON to clear."
+      );
+      return true;
+    }
+    if (couponCmd?.action === "remove") {
+      s.coupon = null;
+      sessions.set(from, s);
+      await sendTextMessage(from, "Coupon removed from your cart.");
+      return true;
+    }
+    if (couponCmd?.action === "apply") {
+      if (!s.cart.length) {
+        await sendTextMessage(
+          from,
+          "Add items to your cart first, then apply a coupon.\nExample: COUPON maajaanki20"
+        );
+        return true;
+      }
+      const applied = await applyCouponToSession(s, couponCmd.code);
+      if (!applied.ok) {
+        await sendTextMessage(from, applied.message);
+        return true;
+      }
+      sessions.set(from, s);
+      await sendTextMessage(from, applied.message);
+      return true;
+    }
+
     if (lower === "cart") {
       await sendTextMessage(
         from,
         [
-          formatCart(s.cart),
+          formatCart(s.cart, s.coupon),
           "",
           "ORDER — send name, address & phone in one reply",
+          "COUPON maajaanki20 — 20% off",
           "MENU — more categories (your bag is kept)",
         ].join("\n")
       );
@@ -256,6 +374,29 @@ exports.tryHandle = async (from, rawText, deps) => {
           "Your cart is empty. Add items first, then type CART."
         );
         return true;
+      }
+      if (s.coupon?.code) {
+        const refreshed = await couponService.applyCoupon(
+          s.coupon.code,
+          computeCartTotals(s.cart, null).subtotal
+        );
+        if (!refreshed.valid) {
+          s.coupon = null;
+          sessions.set(from, s);
+          await sendTextMessage(
+            from,
+            `${refreshed.message}\n\nCoupon removed. Type CART to see your total, then ORDER again.`
+          );
+          return true;
+        }
+        s.coupon = {
+          code: refreshed.code,
+          label: refreshed.label,
+          discount: refreshed.discount,
+          discountType: refreshed.discountType,
+          couponId: refreshed.couponId,
+        };
+        sessions.set(from, s);
       }
       if (!isOrderEnabled()) {
         await sendTextMessage(
@@ -287,10 +428,35 @@ exports.tryHandle = async (from, rawText, deps) => {
     const { added, errors } = parseAddsFromText(text, s.catalog);
     if (added.length) {
       s.cart.push(...added);
+      if (s.coupon?.code) {
+        const refreshed = await couponService.applyCoupon(
+          s.coupon.code,
+          computeCartTotals(s.cart, null).subtotal
+        );
+        if (refreshed.valid) {
+          s.coupon = {
+            code: refreshed.code,
+            label: refreshed.label,
+            discount: refreshed.discount,
+            discountType: refreshed.discountType,
+            couponId: refreshed.couponId,
+          };
+        } else {
+          s.coupon = null;
+        }
+      }
       sessions.set(from, s);
       const parts = ["Added to cart:", ...added.map((a) => `• ${a.qty} × ${a.name}`)];
       if (errors.length) parts.push("", "Notes:", ...errors.map((e) => `• ${e}`));
-      parts.push("", "Type CART to review total, or ORDER when ready.");
+      if (s.coupon?.code) {
+        const totals = computeCartTotals(s.cart, s.coupon);
+        parts.push(
+          "",
+          `Coupon ${s.coupon.code} active · Total: ₹${totals.finalTotal}`
+        );
+      } else {
+        parts.push("", "Type CART to review total, or ORDER when ready.");
+      }
       await sendTextMessage(from, parts.join("\n"));
       return true;
     }
@@ -339,7 +505,7 @@ exports.tryHandle = async (from, rawText, deps) => {
     s.phase = "checkout_confirm";
     sessions.set(from, s);
 
-    const cartText = formatCart(s.cart);
+    const cartText = formatCart(s.cart, s.coupon);
     await sendTextMessage(
       from,
       [
@@ -381,18 +547,31 @@ exports.tryHandle = async (from, rawText, deps) => {
         if (l.priceRupees == null) return `${l.qty} × ${l.name} (${u})`;
         return `${l.qty} × ${l.name} @ ${u} = ₹${l.lineTotal}`;
       });
-      const total = s.cart.reduce((sum, l) => sum + (l.lineTotal || 0), 0);
-      const note = [
+      const { subtotal, discount, finalTotal } = computeCartTotals(
+        s.cart,
+        s.coupon
+      );
+      const noteParts = [
         `Category: ${s.categoryLabel || ""}`,
         "",
         ...cartLines,
         "",
-        `Items total (where price known): ₹${total}`,
+        `Items subtotal (where price known): ₹${subtotal}`,
+      ];
+      if (s.coupon?.code) {
+        noteParts.push(
+          `Coupon: ${s.coupon.code} (${s.coupon.label || ""})`,
+          `Discount: -₹${discount}`
+        );
+      }
+      noteParts.push(
+        `Order total: ₹${finalTotal}`,
         "",
         `Customer: ${s.checkout.name}`,
         `Address: ${s.checkout.address}`,
-        `Contact: ${s.checkout.phone}`,
-      ].join("\n");
+        `Contact: ${s.checkout.phone}`
+      );
+      const note = noteParts.join("\n");
 
       const data = await createOrder({
         customer_name: s.checkout.name,
@@ -400,9 +579,12 @@ exports.tryHandle = async (from, rawText, deps) => {
         whatsapp: wa,
         address: s.checkout.address,
         line_items_note: note.slice(0, 4000),
-        total,
+        total: finalTotal,
         orderLines: s.cart,
       });
+      if (s.coupon?.code) {
+        await couponService.incrementCouponUsage(s.coupon.code);
+      }
       sessions.delete(from);
       await sendTextMessage(
         from,

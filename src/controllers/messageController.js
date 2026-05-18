@@ -140,7 +140,7 @@ exports.handleIncomingMessage = async (message) => {
       "Namaste 🙏 Maa Jaanki Restaurant.",
       "",
       "Type MENU for categories · add like 2 x 5 or 2 x Veg Biryani.",
-      "CART → ORDER (name, address, phone in one reply) → YES to confirm.",
+      "COUPON maajaanki20 — 20% off · CART → ORDER → YES to confirm.",
     ].join("\n")
   );
 };
