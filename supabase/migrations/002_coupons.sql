@@ -28,7 +28,7 @@ insert into public.coupons (
   usage_limit
 )
 values (
-  'MAJAAANKI20',
+  'MAAJAANKI20',
   'percentage',
   20,
   0,
@@ -41,3 +41,22 @@ on conflict (code) do update set
   min_order = excluded.min_order,
   active = excluded.active,
   usage_limit = excluded.usage_limit;
+
+-- Accept old typo code if migration was run earlier
+insert into public.coupons (
+  code,
+  discount_type,
+  discount_value,
+  min_order,
+  active,
+  usage_limit
+)
+values (
+  'MAJAAANKI20',
+  'percentage',
+  20,
+  0,
+  false,
+  0
+)
+on conflict (code) do nothing;

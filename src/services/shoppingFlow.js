@@ -216,6 +216,40 @@ function parseCouponCommand(text) {
   return null;
 }
 
+/** Pull coupon code from a checkout line (COUPON x, or bare maajaanki20). */
+function extractCouponCodeFromLine(line) {
+  const t = String(line || "").trim();
+  if (!t) return null;
+  const prefixed = t.match(/^coupon\s+(\S+)$/i);
+  if (prefixed) return prefixed[1];
+  const digitsOnly = t.replace(/\D/g, "");
+  if (digitsOnly.length >= 10 && /^\d[\d\s+\-().]*$/.test(t)) return null;
+  if (/^[a-z0-9]{4,32}$/i.test(t)) return t;
+  return null;
+}
+
+function buildCheckoutConfirmMessage(s) {
+  const cartText = formatCart(s.cart, s.coupon);
+  const lines = [
+    "Please confirm your order:",
+    "──────────────",
+    `Name: ${s.checkout.name}`,
+    `Address: ${s.checkout.address}`,
+    `Phone: ${s.checkout.phone}`,
+  ];
+  if (s.coupon?.code) {
+    lines.push(`Coupon: ${s.coupon.code} (${s.coupon.label || "discount"})`);
+  }
+  lines.push("", cartText, "", "Reply YES to place the order, or NO to cancel.");
+  if (!s.coupon?.code) {
+    lines.push(
+      "",
+      "Tip: type COUPON maajaanki20 before YES for 20% off."
+    );
+  }
+  return lines.join("\n");
+}
+
 async function applyCouponToSession(s, code) {
   const { subtotal } = computeCartTotals(s.cart, null);
   const result = await couponService.applyCoupon(code, subtotal);
@@ -268,13 +302,24 @@ function parseCheckoutDetailsBlock(text, waFrom) {
   }
   const name = lines[0];
   const phoneLine = lines[lines.length - 1];
-  const address = lines.slice(1, -1).join("\n").trim();
+  const middleLines = lines.slice(1, -1);
+  const addressLines = [];
+  let couponCode = null;
+  for (const line of middleLines) {
+    const code = extractCouponCodeFromLine(line);
+    if (code && !couponCode) couponCode = code;
+    else addressLines.push(line);
+  }
+  const address = addressLines.join("\n").trim();
 
   if (!name || name.length < 2) {
     return { error: "Line 1 should be your full name." };
   }
   if (!address || address.length < 4) {
-    return { error: "Line 2 (and any extra lines before phone) should be your full address." };
+    return {
+      error:
+        "Line 2 should be your full address (coupon on its own line is OK — e.g. maajaanki20).",
+    };
   }
 
   let phoneDigits = "";
@@ -295,6 +340,7 @@ function parseCheckoutDetailsBlock(text, waFrom) {
     name,
     address,
     phone: phoneDigits.slice(-10),
+    couponCode,
   };
 }
 
@@ -414,12 +460,16 @@ exports.tryHandle = async (from, rawText, deps) => {
           "",
           "1) Full name",
           "2) Complete delivery address",
-          "3) 10-digit mobile number — or type SAME to use this WhatsApp number",
+          "3) Coupon (optional) — e.g. maajaanki20",
+          "4) 10-digit mobile — or SAME for this WhatsApp number",
           "",
           "Example:",
           "Asha Mehta",
           "42, MG Road, Demo City - 400001",
+          "maajaanki20",
           "9876504321",
+          "",
+          "Or apply before ORDER: COUPON maajaanki20",
         ].join("\n")
       );
       return true;
@@ -485,10 +535,25 @@ exports.tryHandle = async (from, rawText, deps) => {
   }
 
   if (s.phase === "checkout_details") {
+    const couponCmd = parseCouponCommand(text);
+    if (couponCmd?.action === "apply") {
+      const applied = await applyCouponToSession(s, couponCmd.code);
+      if (!applied.ok) {
+        await sendTextMessage(from, applied.message);
+        return true;
+      }
+      sessions.set(from, s);
+      await sendTextMessage(
+        from,
+        `${applied.message}\n\nThen send name, address, coupon (optional), and phone.`
+      );
+      return true;
+    }
+
     if (!text) {
       await sendTextMessage(
         from,
-        "Send your name, address, and phone (or SAME) — each on its own line."
+        "Send your name, address, optional coupon (maajaanki20), and phone — each on its own line."
       );
       return true;
     }
@@ -502,28 +567,53 @@ exports.tryHandle = async (from, rawText, deps) => {
       address: parsed.address,
       phone: parsed.phone,
     };
+    if (parsed.couponCode) {
+      const applied = await applyCouponToSession(s, parsed.couponCode);
+      if (!applied.ok) {
+        await sendTextMessage(
+          from,
+          `${applied.message}\n\nSend details again without the coupon, or fix the code.`
+        );
+        return true;
+      }
+    }
     s.phase = "checkout_confirm";
     sessions.set(from, s);
 
-    const cartText = formatCart(s.cart, s.coupon);
-    await sendTextMessage(
-      from,
-      [
-        "Please confirm your order:",
-        "──────────────",
-        `Name: ${s.checkout.name}`,
-        `Address: ${s.checkout.address}`,
-        `Phone: ${s.checkout.phone}`,
-        "",
-        cartText,
-        "",
-        "Reply YES to place the order, or NO to cancel.",
-      ].join("\n")
-    );
+    await sendTextMessage(from, buildCheckoutConfirmMessage(s));
     return true;
   }
 
   if (s.phase === "checkout_confirm") {
+    const couponCmd = parseCouponCommand(text);
+    if (couponCmd?.action === "apply") {
+      const applied = await applyCouponToSession(s, couponCmd.code);
+      if (!applied.ok) {
+        await sendTextMessage(from, applied.message);
+        return true;
+      }
+      sessions.set(from, s);
+      await sendTextMessage(from, buildCheckoutConfirmMessage(s));
+      return true;
+    }
+    if (couponCmd?.action === "remove") {
+      s.coupon = null;
+      sessions.set(from, s);
+      await sendTextMessage(from, buildCheckoutConfirmMessage(s));
+      return true;
+    }
+    const bareCode = extractCouponCodeFromLine(text);
+    if (bareCode && lower !== "yes" && lower !== "y" && lower !== "no" && lower !== "n") {
+      const applied = await applyCouponToSession(s, bareCode);
+      if (!applied.ok) {
+        await sendTextMessage(from, applied.message);
+        return true;
+      }
+      sessions.set(from, s);
+      await sendTextMessage(from, buildCheckoutConfirmMessage(s));
+      return true;
+    }
+
     if (lower === "no" || lower === "n") {
       sessions.delete(from);
       await sendTextMessage(
@@ -533,7 +623,10 @@ exports.tryHandle = async (from, rawText, deps) => {
       return true;
     }
     if (lower !== "yes" && lower !== "y") {
-      await sendTextMessage(from, "Reply YES to confirm or NO to cancel.");
+      await sendTextMessage(
+        from,
+        "Reply YES to confirm, NO to cancel, or COUPON maajaanki20 to apply 20% off."
+      );
       return true;
     }
     try {

@@ -1,5 +1,27 @@
 const { getSupabase } = require("../lib/supabaseClient");
 
+/** Works even before Supabase migration is run */
+const BUILTIN_COUPONS = {
+  MAAJAANKI20: {
+    code: "MAAJAANKI20",
+    discount_type: "percentage",
+    discount_value: 20,
+    min_order: 0,
+    active: true,
+    usage_limit: 10000,
+    used_count: 0,
+  },
+};
+
+/** Old misspelling in migration v1 — still accept at checkout */
+const CODE_ALIASES = {
+  MAJAAANKI20: "MAAJAANKI20",
+};
+
+function resolveCouponCode(normalized) {
+  return CODE_ALIASES[normalized] || normalized;
+}
+
 function normalizeCode(code) {
   return String(code || "")
     .trim()
@@ -75,26 +97,31 @@ async function applyCoupon(code, subtotal) {
     return { valid: false, message: "Please enter a coupon code." };
   }
 
+  const lookupCode = resolveCouponCode(normalized);
   const supabase = getSupabase();
-  if (!supabase) {
-    return {
-      valid: false,
-      message: "Coupons are unavailable right now. Please try again later.",
-    };
+  let coupon = null;
+  if (supabase) {
+    const codesToTry = [...new Set([lookupCode, normalized])];
+    for (const code of codesToTry) {
+      const { data, error } = await supabase
+        .from("coupons")
+        .select("*")
+        .eq("code", code)
+        .maybeSingle();
+
+      if (error) {
+        console.error("coupon lookup failed", error.message, error.code);
+        break;
+      }
+      if (data) {
+        coupon = data;
+        break;
+      }
+    }
   }
 
-  const { data: coupon, error } = await supabase
-    .from("coupons")
-    .select("*")
-    .eq("code", normalized)
-    .maybeSingle();
-
-  if (error) {
-    console.error("coupon lookup failed", error.message, error.code);
-    return {
-      valid: false,
-      message: "Could not validate coupon. Please try again.",
-    };
+  if (!coupon && BUILTIN_COUPONS[lookupCode]) {
+    coupon = { ...BUILTIN_COUPONS[lookupCode] };
   }
 
   const check = validateCouponRow(coupon, subtotal);
@@ -105,7 +132,7 @@ async function applyCoupon(code, subtotal) {
 
   return {
     valid: true,
-    code: normalized,
+    code: lookupCode,
     label: discountLabel(coupon),
     discount,
     subtotal: roundRupees(subtotal),
