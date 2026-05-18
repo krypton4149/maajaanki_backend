@@ -88,6 +88,62 @@ exports.getCategoryMenuText = async (categoryId) => {
 /**
  * @returns {Promise<{ categoryLabel: string, items: { name: string, priceRupees: number|null }[] }|null>}
  */
+/**
+ * Full menu for website (categories + items with ids and prices).
+ */
+exports.getFullMenu = async () => {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+
+  const { data: categories, error: catErr } = await supabase
+    .from("menu_categories")
+    .select("id, name")
+    .order("name", { ascending: true });
+
+  if (catErr || !categories?.length) return null;
+
+  let { data: items, error: itemsErr } = await supabase
+    .from("menu_items")
+    .select("id, name, price, category_id, veg")
+    .order("name", { ascending: true });
+
+  if (itemsErr) {
+    const r2 = await supabase
+      .from("menu_items")
+      .select("id, name, price, category_id")
+      .order("name", { ascending: true });
+    items = r2.data;
+    itemsErr = r2.error;
+  }
+
+  if (itemsErr) return null;
+
+  const byCategory = new Map();
+  for (const c of categories) {
+    byCategory.set(String(c.id), {
+      id: String(c.id),
+      name: String(c.name),
+      items: [],
+    });
+  }
+
+  for (const it of items || []) {
+    const catId = String(it.category_id);
+    const bucket = byCategory.get(catId);
+    if (!bucket) continue;
+    bucket.items.push({
+      id: String(it.id),
+      name: String(it.name),
+      price: it.price != null ? Number(it.price) : null,
+      veg: it.veg !== false,
+    });
+  }
+
+  return {
+    categories: [...byCategory.values()].filter((c) => c.items.length > 0),
+  };
+};
+
 exports.getLineItemsForCategory = async (categoryId) => {
   const supabase = getSupabase();
   if (!supabase) return null;

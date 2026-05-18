@@ -32,14 +32,30 @@ function firstInsertedRow(data) {
   return typeof data === "object" ? data : null;
 }
 
-function isMissingLineItemsNoteColumn(error) {
+function isMissingOptionalColumn(error, columnName) {
   const msg = String(error?.message || "");
   const code = error?.code;
+  const col = columnName ? String(columnName) : "";
   return (
     code === "PGRST204" ||
     code === "42703" ||
-    /line_items_note|schema cache|column/i.test(msg)
+    (col && msg.includes(col)) ||
+    /schema cache|column/i.test(msg)
   );
+}
+
+function isMissingLineItemsNoteColumn(error) {
+  return isMissingOptionalColumn(error, "line_items_note");
+}
+
+function stripUnknownColumns(row, error) {
+  const msg = String(error?.message || "");
+  const next = { ...row };
+  for (const key of Object.keys(next)) {
+    if (key === "order_num" || key === "total" || key === "customer_name") continue;
+    if (msg.includes(key)) delete next[key];
+  }
+  return next;
 }
 
 function wrapInsertError(error) {
@@ -73,9 +89,11 @@ async function insertOrderItemsForOrder(supabase, orderId, lines) {
       unit = Math.round(Number(l.lineTotal) / qty);
     }
 
+    const menuItemId = l.menu_item_id || l.menuItemId || null;
+
     return {
       order_id: orderId,
-      menu_item_id: null,
+      menu_item_id: menuItemId,
       item_name: String(l.name || "Item").trim().slice(0, 500),
       unit_price: Math.max(0, unit),
       qty,
@@ -98,9 +116,13 @@ exports.createOrder = async ({
   whatsapp,
   address,
   line_items_note,
-  // Cart total in ₹ — required by DB NOT NULL on `orders.total`
   total: totalRupees,
-  /** Cart lines for `order_items` (name, qty, priceRupees, lineTotal) */
+  subtotal: subtotalRupees,
+  discount_amount: discountRupees,
+  coupon_code,
+  payment_method,
+  payment_status,
+  order_source,
   orderLines,
 }) => {
   const supabase = getSupabase();
@@ -110,9 +132,14 @@ exports.createOrder = async ({
     line_items_note != null ? String(line_items_note).trim() : "";
   const note = noteRaw.slice(0, 4000);
 
-  const total = Math.max(
+  const total = Math.max(0, Math.round(Number(totalRupees) || 0));
+  const subtotal =
+    subtotalRupees != null
+      ? Math.max(0, Math.round(Number(subtotalRupees) || 0))
+      : total;
+  const discount_amount = Math.max(
     0,
-    Math.round(Number(totalRupees) || 0)
+    Math.round(Number(discountRupees) || 0)
   );
 
   const base = {
@@ -121,22 +148,23 @@ exports.createOrder = async ({
     whatsapp: String(whatsapp || "").trim().slice(0, 32),
     address: (address || "").trim().slice(0, 2000),
     total,
+    subtotal,
+    discount_amount,
   };
+
+  if (coupon_code) base.coupon_code = String(coupon_code).trim().slice(0, 64);
+  if (payment_method) base.payment_method = payment_method;
+  if (payment_status) base.payment_status = payment_status;
+  if (order_source) base.order_source = order_source;
+  if (note.length) base.line_items_note = note;
 
   const maxOuter = 8;
   let orderNum = await nextOrderNum(supabase);
 
   outer: for (let outer = 0; outer < maxOuter; outer++) {
-    const tryNoteFirst = note.length > 0;
+    let row = { order_num: orderNum, ...base };
 
-    const rowsToTry = tryNoteFirst
-      ? [
-          { order_num: orderNum, ...base, line_items_note: note },
-          { order_num: orderNum, ...base },
-        ]
-      : [{ order_num: orderNum, ...base }];
-
-    for (const row of rowsToTry) {
+    for (let attempt = 0; attempt < 12; attempt++) {
       const { data, error } = await supabase
         .from("orders")
         .insert(row)
@@ -151,7 +179,16 @@ exports.createOrder = async ({
         }
         try {
           await insertOrderItemsForOrder(supabase, inserted.id, orderLines);
-          return inserted;
+          return {
+            ...inserted,
+            subtotal,
+            discount_amount,
+            total,
+            coupon_code: base.coupon_code || null,
+            payment_method: base.payment_method || null,
+            payment_status: base.payment_status || null,
+            order_source: base.order_source || null,
+          };
         } catch (itemErr) {
           await supabase.from("orders").delete().eq("id", inserted.id);
           throw itemErr;
@@ -160,10 +197,13 @@ exports.createOrder = async ({
 
       if (String(error.code) === "23505") {
         orderNum += 1;
+        row = { ...row, order_num: orderNum };
         continue outer;
       }
 
-      if (row.line_items_note && isMissingLineItemsNoteColumn(error)) {
+      const stripped = stripUnknownColumns(row, error);
+      if (Object.keys(stripped).length < Object.keys(row).length) {
+        row = { order_num: orderNum, ...stripped };
         continue;
       }
 

@@ -672,7 +672,13 @@ exports.tryHandle = async (from, rawText, deps) => {
         whatsapp: wa,
         address: s.checkout.address,
         line_items_note: note.slice(0, 4000),
+        subtotal,
+        discount_amount: discount,
+        coupon_code: s.coupon?.code || null,
         total: finalTotal,
+        payment_method: "cod",
+        payment_status: "cod_pending",
+        order_source: "whatsapp",
         orderLines: s.cart,
       });
       if (s.coupon?.code) {
