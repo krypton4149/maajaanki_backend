@@ -1,0 +1,13 @@
+-- Run migration 006 first (confirmation_whatsapp_sent column).
+--
+-- AUTO-SEND WhatsApp when you set payment_verified = true in Supabase:
+-- 1. Supabase Dashboard → Database → Webhooks → Create webhook
+-- 2. Table: public.orders | Events: UPDATE
+-- 3. URL: https://maajaanki-backend.vercel.app/api/webhooks/supabase/orders
+-- 4. HTTP Headers:
+--      Authorization: Bearer maajaanki-admin-verify-2026
+--    (or set SUPABASE_WEBHOOK_SECRET on Vercel and use that value)
+-- 5. Save
+--
+-- After this, any UPDATE where payment_verified becomes true triggers
+-- "Order Confirmed" on WhatsApp (once per order).

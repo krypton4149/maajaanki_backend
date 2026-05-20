@@ -66,11 +66,17 @@ exports.verifyPayment = async (req, res) => {
 
     if (!existing.paymentVerified) {
       await verifyOrderPayment(existing.id);
-    } else {
-      const supabase = getSupabase();
+    }
+
+    const supabase = getSupabase();
+    if (supabase) {
       await supabase
         .from("orders")
-        .update({ payment_status: "paid" })
+        .update({
+          payment_status: "paid",
+          payment_verified: true,
+          payment_verified_at: new Date().toISOString(),
+        })
         .eq("id", existing.id);
     }
 

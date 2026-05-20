@@ -68,7 +68,12 @@ async function sendOrderConfirmedIfNeeded({ orderId, orderNum, force = false }) 
     discount: order.discountAmount || 0,
   });
 
-  await sendTextMessage(to, message);
+  try {
+    await sendTextMessage(to, message);
+  } catch (err) {
+    console.error("sendOrderConfirmed WhatsApp failed", order.id, err?.message);
+    return { sent: false, reason: "whatsapp_send_failed", detail: err?.message, order };
+  }
 
   const patch = {
     confirmation_whatsapp_sent: true,
