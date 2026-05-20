@@ -239,17 +239,38 @@ function buildCatalogFooter() {
   ].join("\n");
 }
 
-function buildQuantityPickerText({ itemName, priceRupees, qty }) {
-  const price =
-    priceRupees == null || Number.isNaN(Number(priceRupees))
-      ? "Price on call"
-      : `₹${Number(priceRupees)}`;
+function buildQuantityPickerText({ items, qty }) {
+  const list = Array.isArray(items) && items.length ? items : [];
+  if (list.length === 1) {
+    const it = list[0];
+    const price =
+      it.priceRupees == null || Number.isNaN(Number(it.priceRupees))
+        ? "Price on call"
+        : `₹${Number(it.priceRupees)}`;
+    return [
+      `*${it.name}* · ${price}`,
+      "",
+      "*Type quantity* (e.g. 2) then reply *ADD*",
+      "",
+      `Quantity: *${qty}*`,
+      "*CANCEL* to go back",
+    ].join("\n");
+  }
+  const lines = list.map((it) => {
+    const price =
+      it.priceRupees == null || Number.isNaN(Number(it.priceRupees))
+        ? "Ask"
+        : `₹${Number(it.priceRupees)}`;
+    return `• ${it.name} — ${price}`;
+  });
   return [
-    `*${itemName}* · ${price}`,
+    `*${list.length} items selected*`,
     "",
-    "*Type quantity* (e.g. 2) then reply *ADD*",
+    ...lines,
     "",
-    `Selected: *${qty}*`,
+    "*Type quantity* (same for all, e.g. 2) then reply *ADD*",
+    "",
+    `Quantity: *${qty}*`,
     "*CANCEL* to go back",
   ].join("\n");
 }

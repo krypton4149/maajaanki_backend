@@ -108,21 +108,46 @@ exports.sendPayNowButton = async (to, { amount, payUrl }) => {
 };
 
 /** Quantity step: type a number, then tap Add to cart. */
-exports.sendQuantityPicker = async (to, { itemName, priceRupees, qty }) => {
-  const price =
-    priceRupees == null || Number.isNaN(Number(priceRupees))
-      ? "Price on call"
-      : `₹${Number(priceRupees)}`;
-  const body = [
-    `*${itemName}*`,
-    price,
-    "",
-    "*Type quantity* (reply with a number, e.g. 2)",
-    "",
-    `Selected: *${qty}*`,
-    "",
-    "Then tap *Add to cart* below.",
-  ].join("\n");
+exports.sendQuantityPicker = async (to, { items, qty }) => {
+  const list = Array.isArray(items) && items.length ? items : [];
+  let body;
+
+  if (list.length === 1) {
+    const { itemName, priceRupees } = list[0];
+    const price =
+      priceRupees == null || Number.isNaN(Number(priceRupees))
+        ? "Price on call"
+        : `₹${Number(priceRupees)}`;
+    body = [
+      `*${itemName}*`,
+      price,
+      "",
+      "*Type quantity* (reply with a number, e.g. 2)",
+      "",
+      `Quantity: *${qty}*`,
+      "",
+      "Then tap *Add to cart* below.",
+    ].join("\n");
+  } else {
+    const lines = list.map((it) => {
+      const price =
+        it.priceRupees == null || Number.isNaN(Number(it.priceRupees))
+          ? "Ask"
+          : `₹${Number(it.priceRupees)}`;
+      return `• ${it.itemName} — ${price}`;
+    });
+    body = [
+      `*${list.length} items selected*`,
+      "",
+      ...lines,
+      "",
+      "*Type quantity* (same for all items, e.g. 2)",
+      "",
+      `Quantity: *${qty}*`,
+      "",
+      "Then tap *Add to cart* below.",
+    ].join("\n");
+  }
 
   await axios.post(
     BASE_URL,

@@ -192,38 +192,60 @@ function lineTotalFor(row, qty) {
   return Number(price) * qty;
 }
 
+function pendingPickItems(p) {
+  if (Array.isArray(p?.items) && p.items.length) return p.items;
+  if (p?.name) {
+    return [
+      {
+        num: p.num,
+        name: p.name,
+        priceRupees: p.priceRupees,
+      },
+    ];
+  }
+  return [];
+}
+
 async function promptQuantityPicker(from, s, deps) {
   const p = s.pendingPick;
-  if (!p) return;
+  const items = pendingPickItems(p);
+  if (!items.length) return;
   sessions.set(from, s);
+
+  const pickerItems = items.map((it) => ({
+    itemName: it.name,
+    priceRupees: it.priceRupees,
+  }));
+
   if (deps.sendQuantityPicker) {
     try {
       await deps.sendQuantityPicker(from, {
-        itemName: p.name,
-        priceRupees: p.priceRupees,
-        qty: p.qty,
+        items: pickerItems,
+        qty: p.qty || 1,
       });
       return;
     } catch (err) {
       console.error("sendQuantityPicker failed", err?.message);
     }
   }
-  await deps.sendTextMessage(from, flowMsg.buildQuantityPickerText(p));
+  await deps.sendTextMessage(
+    from,
+    flowMsg.buildQuantityPickerText({ items, qty: p.qty || 1 })
+  );
 }
 
 async function confirmPendingPick(from, s, deps) {
   const p = s.pendingPick;
-  if (!p) return false;
+  const items = pendingPickItems(p);
+  if (!items.length) return false;
 
   const qty = Math.min(99, Math.max(1, Number(p.qty) || 1));
-  const added = [
-    {
-      name: p.name,
-      priceRupees: p.priceRupees,
-      qty,
-      lineTotal: lineTotalFor(p, qty),
-    },
-  ];
+  const added = items.map((it) => ({
+    name: it.name,
+    priceRupees: it.priceRupees,
+    qty,
+    lineTotal: lineTotalFor(it, qty),
+  }));
 
   s.cart.push(...added);
   s.phase = "shop";
@@ -242,12 +264,15 @@ async function confirmPendingPick(from, s, deps) {
   return true;
 }
 
-function startPickQuantity(s, row) {
+function startPickQuantity(s, rowsOrRow) {
+  const rows = Array.isArray(rowsOrRow) ? rowsOrRow : [rowsOrRow];
   s.phase = "pick_qty";
   s.pendingPick = {
-    num: row.num,
-    name: row.name,
-    priceRupees: row.priceRupees,
+    items: rows.map((row) => ({
+      num: row.num,
+      name: row.name,
+      priceRupees: row.priceRupees,
+    })),
     qty: 1,
   };
 }
@@ -664,8 +689,15 @@ exports.tryHandle = async (from, rawText, deps) => {
 
     const multi = parseMultipleItemNumbers(text, s.catalog);
     if (multi.rows.length >= 2) {
-      const added = rowsToCartLines(multi.rows, 1);
-      await addLinesToCart(from, s, added, deps, multi.errors);
+      startPickQuantity(s, multi.rows);
+      sessions.set(from, s);
+      if (multi.errors.length) {
+        await sendTextMessage(
+          from,
+          ["Note:", ...multi.errors.map((e) => `• ${e}`)].join("\n")
+        );
+      }
+      await promptQuantityPicker(from, s, deps);
       return true;
     }
 
