@@ -149,14 +149,23 @@ function buildUpiPaymentShort({ upiId, amount }) {
 
 function buildOrderPendingVerification({ orderId, cart, total, utr }) {
   return [
-    "⏳ Order received",
+    "⏳ Order received — awaiting verification",
     "",
-    `${orderId} · ₹${total}`,
+    `Order ID: ${orderId}`,
+    "",
+    "Items:",
     ...cartLinesPlain(cart),
     "",
-    `Txn: ****${utr || "----"}`,
+    `Total: ₹${total}`,
+    "Payment: UPI",
     "",
-    "*Order Confirmed* after we verify (5–15 min) 🙏",
+    `Txn ID submitted: ${utr || "—"}`,
+    "",
+    "Our team will verify your payment.",
+    "You will receive *Order Confirmed* on WhatsApp",
+    "after verification (about 5 minutes).",
+    "",
+    "Thank you — Maa Jaanki Restaurant 🙏",
   ].join("\n");
 }
 
