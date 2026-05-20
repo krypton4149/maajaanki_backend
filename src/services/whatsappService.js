@@ -107,7 +107,7 @@ exports.sendPayNowButton = async (to, { amount, payUrl }) => {
   return { sent: true };
 };
 
-/** Quantity picker: − / + / Add to cart (max 3 reply buttons). */
+/** Quantity step: type a number, then tap Add to cart. */
 exports.sendQuantityPicker = async (to, { itemName, priceRupees, qty }) => {
   const price =
     priceRupees == null || Number.isNaN(Number(priceRupees))
@@ -117,9 +117,11 @@ exports.sendQuantityPicker = async (to, { itemName, priceRupees, qty }) => {
     `*${itemName}*`,
     price,
     "",
-    `Quantity: *${qty}*`,
+    "*Type quantity* (reply with a number, e.g. 2)",
     "",
-    "Use *−* / *+* or type a number, then tap *Add to cart*.",
+    `Selected: *${qty}*`,
+    "",
+    "Then tap *Add to cart* below.",
   ].join("\n");
 
   await axios.post(
@@ -133,8 +135,6 @@ exports.sendQuantityPicker = async (to, { itemName, priceRupees, qty }) => {
         body: { text: body },
         action: {
           buttons: [
-            { type: "reply", reply: { id: "qty_minus", title: "−" } },
-            { type: "reply", reply: { id: "qty_plus", title: "+" } },
             {
               type: "reply",
               reply: { id: "qty_add", title: "Add to cart" },

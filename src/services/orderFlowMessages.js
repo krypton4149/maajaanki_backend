@@ -231,8 +231,9 @@ function buildOrderConfirmed({
 function buildCatalogFooter() {
   return [
     DIVIDER,
-    "Type *item number* to order (e.g. *3*)",
-    "Then set quantity with *−* / *+* or type a number.",
+    "Type *item number* (e.g. *3*)",
+    "Multiple items: *4 6* (space between numbers)",
+    "Then *type quantity* and tap *Add to cart*",
     "",
     "*CART* — checkout  ·  *MENU* — more categories",
   ].join("\n");
@@ -246,10 +247,10 @@ function buildQuantityPickerText({ itemName, priceRupees, qty }) {
   return [
     `*${itemName}* · ${price}`,
     "",
-    `Quantity: *${qty}*`,
+    "*Type quantity* (e.g. 2) then reply *ADD*",
     "",
-    "Reply *+* or *−* · or type quantity (e.g. 2)",
-    "Reply *ADD* to put in cart · *CANCEL* to go back",
+    `Selected: *${qty}*`,
+    "*CANCEL* to go back",
   ].join("\n");
 }
 

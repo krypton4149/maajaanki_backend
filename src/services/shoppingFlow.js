@@ -132,6 +132,60 @@ function parseItemNumber(text, catalog) {
   return catalog.find((c) => c.num === num) || null;
 }
 
+/** e.g. "4 6" or "1 4" → multiple menu rows (qty 1 each). */
+function parseMultipleItemNumbers(text, catalog) {
+  const t = String(text || "").trim();
+  if (!/^[\d\s]+$/.test(t)) return { rows: [], errors: [] };
+
+  const parts = t.split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return { rows: [], errors: [] };
+
+  const rows = [];
+  const errors = [];
+  const seen = new Set();
+
+  for (const part of parts) {
+    const num = parseInt(part, 10);
+    if (!num || seen.has(num)) continue;
+    seen.add(num);
+    const row = catalog.find((c) => c.num === num);
+    if (row) rows.push(row);
+    else errors.push(`No item #${num} in this list.`);
+  }
+
+  return { rows, errors };
+}
+
+function rowsToCartLines(rows, qty = 1) {
+  const q = Math.min(99, Math.max(1, qty));
+  return rows.map((row) => ({
+    name: row.name,
+    priceRupees: row.priceRupees,
+    qty: q,
+    lineTotal: lineTotalFor(row, q),
+  }));
+}
+
+async function addLinesToCart(from, s, added, deps, errors = []) {
+  s.cart.push(...added);
+  await refreshCouponOnCart(s);
+  sessions.set(from, s);
+  const totals = s.coupon ? computeCartTotals(s.cart, s.coupon) : null;
+  await deps.sendTextMessage(
+    from,
+    flowMsg.buildAddedToCart(
+      added,
+      totals ? { finalTotal: totals.finalTotal, coupon: s.coupon } : null
+    )
+  );
+  if (errors.length) {
+    await deps.sendTextMessage(
+      from,
+      ["Note:", ...errors.map((e) => `• ${e}`)].join("\n")
+    );
+  }
+}
+
 function lineTotalFor(row, qty) {
   const price = row.priceRupees;
   if (price == null || Number.isNaN(Number(price))) return 0;
@@ -518,18 +572,7 @@ exports.tryHandleQuantityButton = async (from, buttonId, deps) => {
   const s = sessions.get(from);
   if (!s || s.phase !== "pick_qty" || !s.pendingPick) return false;
 
-  const id = String(buttonId || "").trim();
-  if (id === "qty_plus") {
-    s.pendingPick.qty = Math.min(99, (s.pendingPick.qty || 1) + 1);
-    await promptQuantityPicker(from, s, deps);
-    return true;
-  }
-  if (id === "qty_minus") {
-    s.pendingPick.qty = Math.max(1, (s.pendingPick.qty || 1) - 1);
-    await promptQuantityPicker(from, s, deps);
-    return true;
-  }
-  if (id === "qty_add") {
+  if (String(buttonId || "").trim() === "qty_add") {
     await confirmPendingPick(from, s, deps);
     return true;
   }
@@ -619,6 +662,13 @@ exports.tryHandle = async (from, rawText, deps) => {
       return true;
     }
 
+    const multi = parseMultipleItemNumbers(text, s.catalog);
+    if (multi.rows.length >= 2) {
+      const added = rowsToCartLines(multi.rows, 1);
+      await addLinesToCart(from, s, added, deps, multi.errors);
+      return true;
+    }
+
     const itemRow = parseItemNumber(text, s.catalog);
     if (itemRow) {
       startPickQuantity(s, itemRow);
@@ -657,7 +707,7 @@ exports.tryHandle = async (from, rawText, deps) => {
     await sendTextMessage(
       from,
       [
-        "Type the *item number* from the list above (e.g. *3*).",
+        "Type *item number* (e.g. *3*) or several: *4 6*",
         "",
         flowMsg.buildCatalogFooter(),
       ].join("\n")
@@ -678,18 +728,6 @@ exports.tryHandle = async (from, rawText, deps) => {
       return true;
     }
 
-    if (/^\+$|^plus$/i.test(text)) {
-      s.pendingPick.qty = Math.min(99, (s.pendingPick.qty || 1) + 1);
-      await promptQuantityPicker(from, s, deps);
-      return true;
-    }
-
-    if (/^\-$|^minus$/i.test(text)) {
-      s.pendingPick.qty = Math.max(1, (s.pendingPick.qty || 1) - 1);
-      await promptQuantityPicker(from, s, deps);
-      return true;
-    }
-
     if (/^add$/i.test(text)) {
       await confirmPendingPick(from, s, deps);
       return true;
@@ -698,13 +736,14 @@ exports.tryHandle = async (from, rawText, deps) => {
     const qtyTyped = parseInt(text, 10);
     if (/^\d+$/.test(text) && qtyTyped >= 1 && qtyTyped <= 99) {
       s.pendingPick.qty = qtyTyped;
-      await confirmPendingPick(from, s, deps);
+      sessions.set(from, s);
+      await promptQuantityPicker(from, s, deps);
       return true;
     }
 
     await sendTextMessage(
       from,
-      "Use *+* / *−* buttons, type a number (1–99), or tap *Add to cart*.\n*CANCEL* to go back."
+      "*Type quantity* (e.g. 2), then tap *Add to cart* or reply *ADD*.\n*CANCEL* to go back."
     );
     return true;
   }
