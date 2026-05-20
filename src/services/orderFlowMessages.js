@@ -131,19 +131,32 @@ function buildCodSelected() {
   return "✅ Cash on Delivery Selected\n\nConfirming your order…";
 }
 
-/** Caption on QR image — one message only for UPI pay step */
+/** QR image caption — pay info only (instruction sent as separate text). */
 function buildUpiQrCaption({ amount, upiId }) {
-  const lines = [`*Pay ₹${amount}*`, "Scan QR · any UPI app", ""];
-  if (upiId) lines.push(upiId, "");
-  lines.push("*Send last 4 digits of txn id*");
+  const lines = [`*Pay ₹${amount}*`, "Scan QR · PhonePe / GPay / Paytm"];
+  if (upiId) lines.push("", upiId);
   return lines.join("\n");
+}
+
+/** Standalone prompt — own message bubble reads larger than QR caption. */
+function buildTxnLast4Prompt() {
+  return [
+    "🔢 *AFTER PAYMENT*",
+    "",
+    "*SEND LAST 4 DIGITS*",
+    "*OF TXN ID*",
+    "",
+    "Example: *3457*",
+  ].join("\n");
 }
 
 /** Fallback if QR image cannot be sent */
 function buildUpiPaymentShort({ upiId, amount }) {
   const lines = [`*Pay ₹${amount}*`];
-  if (upiId) lines.push(upiId);
-  lines.push("", "*Send last 4 digits of txn id*");
+  if (upiId) lines.push(upiId, "");
+  lines.push(
+    buildTxnLast4Prompt().split("\n").slice(1).join("\n")
+  );
   return lines.join("\n");
 }
 
@@ -170,7 +183,7 @@ function buildOrderPendingVerification({ orderId, cart, total, utr }) {
 }
 
 function buildTxnLast4Required() {
-  return "*Send last 4 digits of txn id*\n\nExample: 3457";
+  return buildTxnLast4Prompt();
 }
 
 function buildInvalidPaymentProof() {
@@ -260,6 +273,7 @@ module.exports = {
   buildPaymentMenu,
   buildCodSelected,
   buildUpiQrCaption,
+  buildTxnLast4Prompt,
   buildUpiPaymentShort,
   buildOrderPendingVerification,
   buildTxnLast4Required,

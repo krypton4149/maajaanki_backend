@@ -675,7 +675,9 @@ exports.tryHandle = async (from, rawText, deps) => {
           console.error("sendUpiQrImage failed", err?.message);
         }
       }
-      if (!sent) {
+      if (sent) {
+        await sendTextMessage(from, flowMsg.buildTxnLast4Prompt());
+      } else {
         await sendTextMessage(
           from,
           flowMsg.buildUpiPaymentShort({
