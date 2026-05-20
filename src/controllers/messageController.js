@@ -3,6 +3,7 @@ const {
   sendInteractiveListMenu,
   sendUpiQrImage,
   sendPayNowButton,
+  sendQuantityPicker,
 } = require("../services/whatsappService");
 const { MENU_SECTIONS, getSectionById } = require("../data/jaankiMenu");
 const menuDbService = require("../services/menuDbService");
@@ -71,6 +72,7 @@ const shoppingDeps = (from) => ({
   sendTextMessage,
   sendUpiQrImage,
   sendPayNowButton,
+  sendQuantityPicker,
   isOrderEnabled: isOrderDbEnabled,
   createOrder,
   waFrom: from,
@@ -89,6 +91,16 @@ exports.handleIncomingMessage = async (message) => {
   }
 
   if (message.type === "interactive") {
+    const buttonId = message.interactive?.button_reply?.id;
+    if (buttonId) {
+      const qtyHandled = await shoppingFlow.tryHandleQuantityButton(
+        from,
+        buttonId,
+        shoppingDeps(from)
+      );
+      if (qtyHandled) return;
+    }
+
     const listId = message.interactive?.list_reply?.id;
     if (listId) {
       if (isUuid(listId)) {
@@ -158,8 +170,8 @@ exports.handleIncomingMessage = async (message) => {
     [
       "Namaste 🙏 Maa Jaanki Restaurant.",
       "",
-      "Type MENU for categories · add like 2 x Veg Momos.",
-      "Type CART to view bag → coupon → checkout → pay (COD / UPI).",
+      "Type MENU for categories.",
+      "Type an item *number* to add · CART to checkout (COD / UPI).",
     ].join("\n")
   );
 };

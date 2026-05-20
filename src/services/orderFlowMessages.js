@@ -231,12 +231,36 @@ function buildOrderConfirmed({
 function buildCatalogFooter() {
   return [
     DIVIDER,
-    "Add items:",
-    "• 2 x 3  → qty × item number",
-    "• 2 x Veg Momos  → by name",
+    "Type *item number* to order (e.g. *3*)",
+    "Then set quantity with *−* / *+* or type a number.",
     "",
-    "CART — view bag & checkout",
-    "MENU — more categories",
+    "*CART* — checkout  ·  *MENU* — more categories",
+  ].join("\n");
+}
+
+function buildQuantityPickerText({ itemName, priceRupees, qty }) {
+  const price =
+    priceRupees == null || Number.isNaN(Number(priceRupees))
+      ? "Price on call"
+      : `₹${Number(priceRupees)}`;
+  return [
+    `*${itemName}* · ${price}`,
+    "",
+    `Quantity: *${qty}*`,
+    "",
+    "Reply *+* or *−* · or type quantity (e.g. 2)",
+    "Reply *ADD* to put in cart · *CANCEL* to go back",
+  ].join("\n");
+}
+
+function buildOrderFeedbackRequest() {
+  return [
+    "💬 *We would love your feedback*",
+    "",
+    "How was your *WhatsApp ordering experience*?",
+    "How was the *food*?",
+    "",
+    "Reply here — we read every message. Thank you 🙏",
   ].join("\n");
 }
 
@@ -262,7 +286,7 @@ function buildWelcomeHint() {
     "Namaste 🙏 Welcome to Maa Jaanki Restaurant.",
     "",
     "Type *MENU* to browse categories.",
-    "Add items like: 2 x Veg Momos",
+    "Type an *item number* to add (e.g. *3*).",
     "Type *CART* to view your bag & checkout.",
   ].join("\n");
 }
@@ -284,6 +308,8 @@ module.exports = {
   buildInvalidPaymentProof,
   buildOrderConfirmed,
   buildCatalogFooter,
+  buildQuantityPickerText,
+  buildOrderFeedbackRequest,
   buildAddedToCart,
   buildWelcomeHint,
   computeTotals,

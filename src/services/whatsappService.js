@@ -107,6 +107,46 @@ exports.sendPayNowButton = async (to, { amount, payUrl }) => {
   return { sent: true };
 };
 
+/** Quantity picker: − / + / Add to cart (max 3 reply buttons). */
+exports.sendQuantityPicker = async (to, { itemName, priceRupees, qty }) => {
+  const price =
+    priceRupees == null || Number.isNaN(Number(priceRupees))
+      ? "Price on call"
+      : `₹${Number(priceRupees)}`;
+  const body = [
+    `*${itemName}*`,
+    price,
+    "",
+    `Quantity: *${qty}*`,
+    "",
+    "Use *−* / *+* or type a number, then tap *Add to cart*.",
+  ].join("\n");
+
+  await axios.post(
+    BASE_URL,
+    {
+      messaging_product: "whatsapp",
+      to,
+      type: "interactive",
+      interactive: {
+        type: "button",
+        body: { text: body },
+        action: {
+          buttons: [
+            { type: "reply", reply: { id: "qty_minus", title: "−" } },
+            { type: "reply", reply: { id: "qty_plus", title: "+" } },
+            {
+              type: "reply",
+              reply: { id: "qty_add", title: "Add to cart" },
+            },
+          ],
+        },
+      },
+    },
+    { headers: authHeaders({ "Content-Type": "application/json" }) }
+  );
+};
+
 exports.sendTextMessage = async (to, body) => {
   const text =
     typeof body === "string" && body.length > WA_TEXT_MAX

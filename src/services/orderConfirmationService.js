@@ -70,6 +70,7 @@ async function sendOrderConfirmedIfNeeded({ orderId, orderNum, force = false }) 
 
   try {
     await sendTextMessage(to, message);
+    await sendTextMessage(to, orderFlowMessages.buildOrderFeedbackRequest());
   } catch (err) {
     console.error("sendOrderConfirmed WhatsApp failed", order.id, err?.message);
     return { sent: false, reason: "whatsapp_send_failed", detail: err?.message, order };

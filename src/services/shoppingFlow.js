@@ -59,6 +59,12 @@ exports.onMenuOpened = (from) => {
       cart: Array.isArray(s.cart) ? s.cart.map((c) => ({ ...c })) : [],
       coupon: s.coupon || null,
     });
+    return;
+  }
+
+  if (s.pendingPick) {
+    delete s.pendingPick;
+    sessions.set(from, s);
   }
 };
 
@@ -116,6 +122,80 @@ function splitOrderLines(text) {
     .filter(Boolean);
   if (pieces.length > 1) return pieces;
   return byNewline;
+}
+
+function parseItemNumber(text, catalog) {
+  const t = String(text || "").trim();
+  if (!/^\d+$/.test(t)) return null;
+  const num = parseInt(t, 10);
+  if (!num || num < 1) return null;
+  return catalog.find((c) => c.num === num) || null;
+}
+
+function lineTotalFor(row, qty) {
+  const price = row.priceRupees;
+  if (price == null || Number.isNaN(Number(price))) return 0;
+  return Number(price) * qty;
+}
+
+async function promptQuantityPicker(from, s, deps) {
+  const p = s.pendingPick;
+  if (!p) return;
+  sessions.set(from, s);
+  if (deps.sendQuantityPicker) {
+    try {
+      await deps.sendQuantityPicker(from, {
+        itemName: p.name,
+        priceRupees: p.priceRupees,
+        qty: p.qty,
+      });
+      return;
+    } catch (err) {
+      console.error("sendQuantityPicker failed", err?.message);
+    }
+  }
+  await deps.sendTextMessage(from, flowMsg.buildQuantityPickerText(p));
+}
+
+async function confirmPendingPick(from, s, deps) {
+  const p = s.pendingPick;
+  if (!p) return false;
+
+  const qty = Math.min(99, Math.max(1, Number(p.qty) || 1));
+  const added = [
+    {
+      name: p.name,
+      priceRupees: p.priceRupees,
+      qty,
+      lineTotal: lineTotalFor(p, qty),
+    },
+  ];
+
+  s.cart.push(...added);
+  s.phase = "shop";
+  delete s.pendingPick;
+  await refreshCouponOnCart(s);
+  sessions.set(from, s);
+
+  const totals = s.coupon ? computeCartTotals(s.cart, s.coupon) : null;
+  await deps.sendTextMessage(
+    from,
+    flowMsg.buildAddedToCart(
+      added,
+      totals ? { finalTotal: totals.finalTotal, coupon: s.coupon } : null
+    )
+  );
+  return true;
+}
+
+function startPickQuantity(s, row) {
+  s.phase = "pick_qty";
+  s.pendingPick = {
+    num: row.num,
+    name: row.name,
+    priceRupees: row.priceRupees,
+    qty: 1,
+  };
 }
 
 function parseAddsFromText(text, catalog) {
@@ -410,6 +490,11 @@ async function finalizeOrder(from, s, deps, options = {}) {
         discount,
       })
     );
+    try {
+      await sendTextMessage(from, flowMsg.buildOrderFeedbackRequest());
+    } catch (err) {
+      console.error("feedback message failed", err?.message);
+    }
   }
 
   sessions.delete(from);
@@ -428,6 +513,28 @@ async function submitUpiProof(from, s, proof, deps) {
   sessions.set(from, s);
   await finalizeOrder(from, s, deps, { pendingVerification: true });
 }
+
+exports.tryHandleQuantityButton = async (from, buttonId, deps) => {
+  const s = sessions.get(from);
+  if (!s || s.phase !== "pick_qty" || !s.pendingPick) return false;
+
+  const id = String(buttonId || "").trim();
+  if (id === "qty_plus") {
+    s.pendingPick.qty = Math.min(99, (s.pendingPick.qty || 1) + 1);
+    await promptQuantityPicker(from, s, deps);
+    return true;
+  }
+  if (id === "qty_minus") {
+    s.pendingPick.qty = Math.max(1, (s.pendingPick.qty || 1) - 1);
+    await promptQuantityPicker(from, s, deps);
+    return true;
+  }
+  if (id === "qty_add") {
+    await confirmPendingPick(from, s, deps);
+    return true;
+  }
+  return false;
+};
 
 exports.tryHandlePaymentProof = async (from, message, deps) => {
   const { sendTextMessage } = deps;
@@ -449,6 +556,7 @@ exports.tryHandle = async (from, rawText, deps) => {
   const {
     sendTextMessage,
     sendUpiQrImage,
+    sendQuantityPicker,
     isOrderEnabled,
     createOrder,
     waFrom,
@@ -511,6 +619,14 @@ exports.tryHandle = async (from, rawText, deps) => {
       return true;
     }
 
+    const itemRow = parseItemNumber(text, s.catalog);
+    if (itemRow) {
+      startPickQuantity(s, itemRow);
+      sessions.set(from, s);
+      await promptQuantityPicker(from, s, deps);
+      return true;
+    }
+
     const { added, errors } = parseAddsFromText(text, s.catalog);
     if (added.length) {
       s.cart.push(...added);
@@ -540,7 +656,55 @@ exports.tryHandle = async (from, rawText, deps) => {
 
     await sendTextMessage(
       from,
-      ["How to add:", "• 2 x 3  (item number)", "• 2 x Veg Momos  (by name)", "", flowMsg.buildCatalogFooter()].join("\n")
+      [
+        "Type the *item number* from the list above (e.g. *3*).",
+        "",
+        flowMsg.buildCatalogFooter(),
+      ].join("\n")
+    );
+    return true;
+  }
+
+  // —— Pick quantity for selected item ——
+  if (s.phase === "pick_qty" && s.pendingPick) {
+    if (/^cancel$/i.test(text)) {
+      s.phase = "shop";
+      delete s.pendingPick;
+      sessions.set(from, s);
+      await sendTextMessage(
+        from,
+        "Cancelled.\n\nType an *item number* to add, or *MENU* / *CART*."
+      );
+      return true;
+    }
+
+    if (/^\+$|^plus$/i.test(text)) {
+      s.pendingPick.qty = Math.min(99, (s.pendingPick.qty || 1) + 1);
+      await promptQuantityPicker(from, s, deps);
+      return true;
+    }
+
+    if (/^\-$|^minus$/i.test(text)) {
+      s.pendingPick.qty = Math.max(1, (s.pendingPick.qty || 1) - 1);
+      await promptQuantityPicker(from, s, deps);
+      return true;
+    }
+
+    if (/^add$/i.test(text)) {
+      await confirmPendingPick(from, s, deps);
+      return true;
+    }
+
+    const qtyTyped = parseInt(text, 10);
+    if (/^\d+$/.test(text) && qtyTyped >= 1 && qtyTyped <= 99) {
+      s.pendingPick.qty = qtyTyped;
+      await confirmPendingPick(from, s, deps);
+      return true;
+    }
+
+    await sendTextMessage(
+      from,
+      "Use *+* / *−* buttons, type a number (1–99), or tap *Add to cart*.\n*CANCEL* to go back."
     );
     return true;
   }
