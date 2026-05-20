@@ -1,7 +1,6 @@
 const couponService = require("./couponService");
 const checkoutService = require("./checkoutService");
 const flowMsg = require("./orderFlowMessages");
-const { buildPublicPayUrl } = require("./payLinkService");
 const paymentVerification = require("./paymentVerificationService");
 
 const sessions = new Map();
@@ -436,7 +435,7 @@ exports.tryHandlePaymentProof = async (from, message, deps) => {
   if (!s || s.phase !== "upi_await_proof") return false;
 
   if (message.type === "image") {
-    await sendTextMessage(from, flowMsg.buildUtrOnlyRequired());
+    await sendTextMessage(from, flowMsg.buildTxnLast4Required());
     return true;
   }
 
@@ -450,7 +449,6 @@ exports.tryHandle = async (from, rawText, deps) => {
   const {
     sendTextMessage,
     sendUpiQrImage,
-    sendPayNowButton,
     isOrderEnabled,
     createOrder,
     waFrom,
@@ -664,43 +662,28 @@ exports.tryHandle = async (from, rawText, deps) => {
       s.phase = "upi_await_proof";
       sessions.set(from, s);
       const upi = config.methods.find((m) => m.id === "upi");
-      await sendTextMessage(
-        from,
-        flowMsg.buildUpiPayment({
-          upiId: upi?.upiId,
-          payeeName: upi?.payeeName,
-          amount: finalTotal,
-        })
-      );
-      const payUrl = buildPublicPayUrl(finalTotal);
-      if (sendPayNowButton && payUrl) {
-        try {
-          await sendPayNowButton(from, { amount: finalTotal, payUrl });
-        } catch (err) {
-          console.error("sendPayNowButton failed", err?.message);
-        }
-      }
+      const caption = flowMsg.buildUpiQrCaption({
+        amount: finalTotal,
+        upiId: upi?.upiId,
+      });
+      let sent = false;
       if (sendUpiQrImage) {
         try {
-          const qr = await sendUpiQrImage(
-            from,
-            `Scan to pay ₹${finalTotal} · Maa Jaanki Restaurant`
-          );
-          if (!qr?.sent) {
-            await sendTextMessage(
-              from,
-              "QR image unavailable. Use the UPI ID above to pay."
-            );
-          }
+          const qr = await sendUpiQrImage(from, caption);
+          sent = !!qr?.sent;
         } catch (err) {
           console.error("sendUpiQrImage failed", err?.message);
-          await sendTextMessage(
-            from,
-            "Could not send QR image. Use the UPI ID above to pay."
-          );
         }
       }
-      await sendTextMessage(from, flowMsg.buildUpiAwaitProof(finalTotal));
+      if (!sent) {
+        await sendTextMessage(
+          from,
+          flowMsg.buildUpiPaymentShort({
+            upiId: upi?.upiId,
+            amount: finalTotal,
+          })
+        );
+      }
       return true;
     }
 
@@ -724,24 +707,12 @@ exports.tryHandle = async (from, rawText, deps) => {
   // —— UPI: require UTR or payment screenshot ——
   if (s.phase === "upi_await_proof") {
     if (isDoneOnly(text)) {
-      await sendTextMessage(
-        from,
-        [
-          "⚠️ We cannot confirm with DONE alone.",
-          "",
-          "Please send your *12-digit UTR / Transaction ID*",
-          "after completing UPI payment.",
-          "",
-          flowMsg.buildUpiAwaitProof(
-            computeCartTotals(s.cart, s.coupon).finalTotal
-          ),
-        ].join("\n")
-      );
+      await sendTextMessage(from, flowMsg.buildTxnLast4Required());
       return true;
     }
 
-    const utr = paymentVerification.extractUtr(text);
-    if (!utr || !paymentVerification.isValidUtr(utr)) {
+    const utr = paymentVerification.extractTxnLast4(text);
+    if (!utr || !paymentVerification.isValidTxnLast4(utr)) {
       await sendTextMessage(from, flowMsg.buildInvalidPaymentProof());
       return true;
     }
@@ -749,7 +720,7 @@ exports.tryHandle = async (from, rawText, deps) => {
     if (await paymentVerification.isUtrAlreadyUsed(utr)) {
       await sendTextMessage(
         from,
-        "This Transaction ID was already used.\n\nSend the correct UTR or a payment screenshot."
+        "These 4 digits were already used.\n\nSend the correct last 4 digits."
       );
       return true;
     }

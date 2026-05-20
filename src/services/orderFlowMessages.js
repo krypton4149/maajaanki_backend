@@ -1,5 +1,4 @@
 const checkoutService = require("./checkoutService");
-const { buildPublicPayUrl } = require("./payLinkService");
 
 const DIVIDER = "──────────────";
 
@@ -132,100 +131,41 @@ function buildCodSelected() {
   return "✅ Cash on Delivery Selected\n\nConfirming your order…";
 }
 
-function buildUpiAwaitProof(amount) {
-  return [
-    "🔢 Send Transaction ID (UTR)",
-    "",
-    `After paying ₹${amount}, reply with your`,
-    "*12-digit UPI Transaction ID / UTR*",
-    "",
-    "Example: 428765432109",
-    "",
-    "⚠️ Screenshots are not accepted.",
-    "⚠️ Typing DONE will NOT confirm your order.",
-    "",
-    "We confirm only after verifying UTR in our system.",
-    "Reply MENU to cancel.",
-  ].join("\n");
+/** Caption on QR image — one message only for UPI pay step */
+function buildUpiQrCaption({ amount, upiId }) {
+  const lines = [`*Pay ₹${amount}*`, "Scan QR · any UPI app", ""];
+  if (upiId) lines.push(upiId, "");
+  lines.push("*Send last 4 digits of txn id*");
+  return lines.join("\n");
 }
 
-function buildUpiPayment({ upiId, payeeName, amount }) {
-  const lines = [
-    "✅ UPI & QR Payment",
-    "",
-    "Scan the QR code in the next message",
-    "with PhonePe, Google Pay, or Paytm.",
-    "",
-    `Amount: ₹${amount}`,
-  ];
-
-  if (upiId) {
-    lines.push(`UPI ID: ${upiId}`);
-    if (payeeName) lines.push(`Name: ${payeeName}`);
-    const payUrl = buildPublicPayUrl(amount);
-    if (payUrl) {
-      lines.push("", "Tap to pay (opens UPI app):", payUrl);
-    } else {
-      lines.push(
-        "",
-        "Copy the UPI ID above and pay in PhonePe / GPay / Paytm."
-      );
-    }
-  }
-
-  lines.push(
-    "",
-    DIVIDER,
-    "Next: send your 12-digit UTR (see message after QR)."
-  );
-
+/** Fallback if QR image cannot be sent */
+function buildUpiPaymentShort({ upiId, amount }) {
+  const lines = [`*Pay ₹${amount}*`];
+  if (upiId) lines.push(upiId);
+  lines.push("", "*Send last 4 digits of txn id*");
   return lines.join("\n");
 }
 
 function buildOrderPendingVerification({ orderId, cart, total, utr }) {
-  const lines = [
-    "⏳ Order received — awaiting verification",
+  return [
+    "⏳ Order received",
     "",
-    `Order ID: ${orderId}`,
-    "",
-    "Items:",
+    `${orderId} · ₹${total}`,
     ...cartLinesPlain(cart),
     "",
-    `Total: ₹${total}`,
-    `Payment: UPI`,
+    `Txn: ****${utr || "----"}`,
     "",
-    `UTR submitted: ${utr || "—"}`,
-    "",
-    "Our team will verify your Transaction ID.",
-    "You will receive *Order Confirmed* on WhatsApp",
-    "only after verification (usually 5–15 mins).",
-    "",
-    "Thank you — Maa Jaanki Restaurant 🙏",
-  ];
-
-  return lines.join("\n");
+    "*Order Confirmed* after we verify (5–15 min) 🙏",
+  ].join("\n");
 }
 
-function buildUtrOnlyRequired() {
-  return [
-    "We only accept *Transaction ID (UTR)*, not screenshots.",
-    "",
-    "Open your UPI app → Payment history →",
-    "copy the 12-digit reference number and send it here.",
-    "",
-    "Example: 428765432109",
-  ].join("\n");
+function buildTxnLast4Required() {
+  return "*Send last 4 digits of txn id*\n\nExample: 3457";
 }
 
 function buildInvalidPaymentProof() {
-  return [
-    "Invalid Transaction ID.",
-    "",
-    "Send your *12-digit UPI UTR* only (numbers).",
-    "Example: 428765432109",
-    "",
-    "Screenshots are not accepted.",
-  ].join("\n");
+  return "Send *4 digits only* (last 4 of txn id).\nExample: 3457";
 }
 
 function buildOrderConfirmed({
@@ -310,10 +250,10 @@ module.exports = {
   buildDetailsPrompt,
   buildPaymentMenu,
   buildCodSelected,
-  buildUpiPayment,
-  buildUpiAwaitProof,
+  buildUpiQrCaption,
+  buildUpiPaymentShort,
   buildOrderPendingVerification,
-  buildUtrOnlyRequired,
+  buildTxnLast4Required,
   buildInvalidPaymentProof,
   buildOrderConfirmed,
   buildCatalogFooter,

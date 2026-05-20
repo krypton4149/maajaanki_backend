@@ -28,6 +28,29 @@ function isValidUtr(utr) {
   return /^[A-Z0-9]+$/.test(utr);
 }
 
+/** Last 4 digits of UPI txn id (WhatsApp flow). */
+function extractTxnLast4(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+  if (/^\d{4}$/.test(raw)) return raw;
+  const labeled = raw.match(
+    /\b(?:utr|txn|transaction|ref)[:\s#-]*(\d{4,})\b/i
+  );
+  if (labeled) {
+    const d = labeled[1].replace(/\D/g, "");
+    if (d.length >= 4) return d.slice(-4);
+  }
+  const four = raw.match(/\b(\d{4})\b/);
+  if (four) return four[1];
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length >= 4) return digits.slice(-4);
+  return null;
+}
+
+function isValidTxnLast4(value) {
+  return typeof value === "string" && /^\d{4}$/.test(value);
+}
+
 async function isUtrAlreadyUsed(utr) {
   const supabase = getSupabase();
   if (!supabase || !utr) return false;
@@ -71,6 +94,8 @@ async function verifyOrderPayment(orderId) {
 module.exports = {
   extractUtr,
   isValidUtr,
+  extractTxnLast4,
+  isValidTxnLast4,
   isUtrAlreadyUsed,
   verifyOrderPayment,
 };
