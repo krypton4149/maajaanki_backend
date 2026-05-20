@@ -13,6 +13,7 @@ router.post("/orders", checkoutController.placeOrder);
 
 router.get("/admin/orders/pending", orderAdminController.listPending);
 router.post("/admin/orders/verify-payment", orderAdminController.verifyPayment);
+router.post("/admin/orders/send-confirmation", orderAdminController.sendConfirmation);
 router.post("/admin/orders/reject-payment", orderAdminController.rejectPayment);
 router.post("/orders/verify-payment", orderAdminController.verifyPayment);
 
