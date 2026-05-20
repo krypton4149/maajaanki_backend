@@ -134,18 +134,17 @@ function buildCodSelected() {
 
 function buildUpiAwaitProof(amount) {
   return [
-    "📸 Payment verification required",
+    "🔢 Send Transaction ID (UTR)",
     "",
-    `After paying ₹${amount}, send ONE of the following:`,
+    `After paying ₹${amount}, reply with your`,
+    "*12-digit UPI Transaction ID / UTR*",
     "",
-    "• Your 12-digit UTR / Transaction ID",
-    "  Example: 428765432109",
+    "Example: 428765432109",
     "",
-    "• Screenshot of successful UPI payment",
+    "⚠️ Screenshots are not accepted.",
+    "⚠️ Typing DONE will NOT confirm your order.",
     "",
-    "⚠️ Typing DONE alone will NOT confirm your order.",
-    "We confirm only after verifying your payment.",
-    "",
+    "We confirm only after verifying UTR in our system.",
     "Reply MENU to cancel.",
   ].join("\n");
 }
@@ -177,21 +176,15 @@ function buildUpiPayment({ upiId, payeeName, amount }) {
   lines.push(
     "",
     DIVIDER,
-    "Next: send your UTR or payment screenshot (see message after QR)."
+    "Next: send your 12-digit UTR (see message after QR)."
   );
 
   return lines.join("\n");
 }
 
-function buildOrderPendingVerification({
-  orderId,
-  cart,
-  total,
-  utr,
-  hasScreenshot,
-}) {
+function buildOrderPendingVerification({ orderId, cart, total, utr }) {
   const lines = [
-    "⏳ Order received — payment under review",
+    "⏳ Order received — awaiting verification",
     "",
     `Order ID: ${orderId}`,
     "",
@@ -200,32 +193,38 @@ function buildOrderPendingVerification({
     "",
     `Total: ₹${total}`,
     `Payment: UPI`,
+    "",
+    `UTR submitted: ${utr || "—"}`,
+    "",
+    "Our team will verify your Transaction ID.",
+    "You will receive *Order Confirmed* on WhatsApp",
+    "only after verification (usually 5–15 mins).",
+    "",
+    "Thank you — Maa Jaanki Restaurant 🙏",
   ];
-
-  if (utr) lines.push(`UTR submitted: ${utr}`);
-  if (hasScreenshot) lines.push("Payment screenshot: received");
-
-  lines.push(
-    "",
-    "We are verifying your payment.",
-    "You will get Order Confirmed on WhatsApp",
-    "once payment is verified (usually 5–15 mins).",
-    "",
-    "Thank you — Maa Jaanki Restaurant 🙏"
-  );
 
   return lines.join("\n");
 }
 
+function buildUtrOnlyRequired() {
+  return [
+    "We only accept *Transaction ID (UTR)*, not screenshots.",
+    "",
+    "Open your UPI app → Payment history →",
+    "copy the 12-digit reference number and send it here.",
+    "",
+    "Example: 428765432109",
+  ].join("\n");
+}
+
 function buildInvalidPaymentProof() {
   return [
-    "Could not read a valid Transaction ID.",
+    "Invalid Transaction ID.",
     "",
-    "Please send:",
-    "• 12-digit UTR (numbers only), or",
-    "• A clear screenshot of UPI payment success",
+    "Send your *12-digit UPI UTR* only (numbers).",
+    "Example: 428765432109",
     "",
-    "Example UTR: 428765432109",
+    "Screenshots are not accepted.",
   ].join("\n");
 }
 
@@ -314,6 +313,7 @@ module.exports = {
   buildUpiPayment,
   buildUpiAwaitProof,
   buildOrderPendingVerification,
+  buildUtrOnlyRequired,
   buildInvalidPaymentProof,
   buildOrderConfirmed,
   buildCatalogFooter,

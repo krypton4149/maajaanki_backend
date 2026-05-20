@@ -38,33 +38,6 @@ function isDoneOnly(text) {
   return /^(done|paid)$/i.test(String(text || "").trim());
 }
 
-async function notifyRestaurantNewUpiOrder(sendTextMessage, orderRow, proof) {
-  const admin = String(process.env.RESTAURANT_ADMIN_WHATSAPP || "").replace(
-    /\D/g,
-    ""
-  );
-  if (!admin || admin.length < 10 || !sendTextMessage) return;
-
-  const to = admin.length === 10 ? `91${admin}` : admin;
-  const lines = [
-    "🔔 New UPI order — verify payment",
-    "",
-    `Order #${orderRow.order_num}`,
-    `Customer: ${proof.customerName || "—"}`,
-    `Total: ₹${proof.total}`,
-    proof.utr ? `UTR: ${proof.utr}` : null,
-    proof.hasScreenshot ? "Screenshot: received on WhatsApp" : null,
-    "",
-    "Check Supabase orders → mark payment_verified when paid.",
-  ].filter(Boolean);
-
-  try {
-    await sendTextMessage(to, lines.join("\n"));
-  } catch (err) {
-    console.error("admin notify failed", err?.message);
-  }
-}
-
 exports.clearSession = (from) => {
   sessions.delete(from);
 };
@@ -424,15 +397,8 @@ async function finalizeOrder(from, s, deps, options = {}) {
         cart: s.cart,
         total: finalTotal,
         utr: s.paymentProof?.utr,
-        hasScreenshot: !!s.paymentProof?.mediaId,
       })
     );
-    await notifyRestaurantNewUpiOrder(sendTextMessage, data, {
-      customerName: s.checkout.name,
-      total: finalTotal,
-      utr: s.paymentProof?.utr,
-      hasScreenshot: !!s.paymentProof?.mediaId,
-    });
   } else {
     await sendTextMessage(
       from,
@@ -454,7 +420,11 @@ async function finalizeOrder(from, s, deps, options = {}) {
  * Submit UPI payment proof (UTR text or screenshot).
  */
 async function submitUpiProof(from, s, proof, deps) {
-  s.paymentProof = proof;
+  if (!proof?.utr) {
+    await deps.sendTextMessage(from, flowMsg.buildInvalidPaymentProof());
+    return;
+  }
+  s.paymentProof = { utr: proof.utr };
   s.paymentMethod = "upi";
   sessions.set(from, s);
   await finalizeOrder(from, s, deps, { pendingVerification: true });
@@ -466,28 +436,7 @@ exports.tryHandlePaymentProof = async (from, message, deps) => {
   if (!s || s.phase !== "upi_await_proof") return false;
 
   if (message.type === "image") {
-    const mediaId =
-      message.image?.id ||
-      message.image?.media_id ||
-      message.document?.id;
-    if (!mediaId) {
-      await sendTextMessage(from, flowMsg.buildInvalidPaymentProof());
-      return true;
-    }
-    try {
-      await submitUpiProof(
-        from,
-        s,
-        { mediaId, utr: null },
-        deps
-      );
-    } catch (err) {
-      console.error("submitUpiProof image", err?.message);
-      await sendTextMessage(
-        from,
-        "We could not save your order. Please try again or call us."
-      );
-    }
+    await sendTextMessage(from, flowMsg.buildUtrOnlyRequired());
     return true;
   }
 
@@ -780,7 +729,7 @@ exports.tryHandle = async (from, rawText, deps) => {
         [
           "⚠️ We cannot confirm with DONE alone.",
           "",
-          "Please send your *12-digit UTR* or a *payment screenshot*",
+          "Please send your *12-digit UTR / Transaction ID*",
           "after completing UPI payment.",
           "",
           flowMsg.buildUpiAwaitProof(

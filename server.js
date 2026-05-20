@@ -9,6 +9,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use("/assets", express.static(path.join(__dirname, "assets")));
+app.use(express.static(path.join(__dirname, "public")));
 
 const webhookRoutes = require("./src/routes/webhookRoutes");
 const apiRoutes = require("./src/routes/apiRoutes");

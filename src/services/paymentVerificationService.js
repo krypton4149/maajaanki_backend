@@ -61,7 +61,7 @@ async function verifyOrderPayment(orderId) {
       payment_status: "paid",
     })
     .eq("id", orderId)
-    .select("id, order_num, whatsapp, customer_name, total")
+    .select("id, order_num, whatsapp, phone, customer_name, total, coupon_code, discount_amount")
     .maybeSingle();
 
   if (error) throw error;

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Maa Jaanki — Verify UPI Orders</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; background: #f4f4f5; color: #18181b; }
+    header { background: #c45c26; color: #fff; padding: 16px 20px; }
+    header h1 { margin: 0; font-size: 1.25rem; }
+    main { max-width: 900px; margin: 0 auto; padding: 20px; }
+    .bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; align-items: center; }
+    input, button { padding: 10px 12px; font-size: 14px; border-radius: 8px; border: 1px solid #d4d4d8; }
+    input { flex: 1; min-width: 200px; }
+    button { background: #c45c26; color: #fff; border: none; cursor: pointer; font-weight: 600; }
+    button.secondary { background: #3f3f46; }
+    button.danger { background: #dc2626; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .card { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .card h2 { margin: 0 0 8px; font-size: 1.1rem; }
+    .meta { color: #52525b; font-size: 0.9rem; line-height: 1.6; }
+    .utr { font-family: monospace; font-size: 1.1rem; background: #fef3c7; padding: 8px 12px; border-radius: 8px; margin: 10px 0; display: inline-block; }
+    .items { margin: 8px 0; padding-left: 18px; }
+    .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .empty { text-align: center; color: #71717a; padding: 40px; }
+    .toast { position: fixed; bottom: 20px; right: 20px; background: #18181b; color: #fff; padding: 12px 16px; border-radius: 8px; display: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Maa Jaanki — UPI verification</h1>
+  </header>
+  <main>
+    <div class="bar">
+      <input type="password" id="adminKey" placeholder="Admin key (ADMIN_VERIFY_KEY)" />
+      <button type="button" id="saveKey">Save key</button>
+      <button type="button" id="refresh">Refresh</button>
+    </div>
+    <p class="meta">Match UTR in your bank app, then Confirm. Customer gets WhatsApp only after you confirm.</p>
+    <div id="list"></div>
+  </main>
+  <motion id="toast" class="toast"></div>
+
+  <script>
+    const API = window.location.origin;
+    const keyInput = document.getElementById("adminKey");
+    const listEl = document.getElementById("list");
+    const toast = document.getElementById("toast");
+
+    keyInput.value = localStorage.getItem("mj_admin_key") || "";
+
+    document.getElementById("saveKey").onclick = () => {
+      localStorage.setItem("mj_admin_key", keyInput.value.trim());
+      toastMsg("Key saved");
+      load();
+    };
+
+    document.getElementById("refresh").onclick = load;
+
+    function headers() {
+      return {
+        "Content-Type": "application/json",
+        "x-admin-key": keyInput.value.trim(),
+      };
+    }
+
+    function toastMsg(t) {
+      toast.textContent = t;
+      toast.style.display = "block";
+      setTimeout(() => (toast.style.display = "none"), 3000);
+    }
+
+    async function load() {
+      listEl.innerHTML = "<p class='empty'>Loading…</p>";
+      try {
+        const res = await fetch(API + "/api/admin/orders/pending", { headers: headers() });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.message || "Failed");
+        if (!data.orders.length) {
+          listEl.innerHTML = "<p class='empty'>No orders waiting for verification.</p>";
+          return;
+        }
+        listEl.innerHTML = data.orders.map(renderCard).join("");
+        bindActions();
+      } catch (e) {
+        listEl.innerHTML = "<p class='empty'>Error: " + e.message + "</p>";
+      }
+    }
+
+    function renderCard(o) {
+      const items = (o.items || [])
+        .map((i) => "<li>" + i.qty + " × " + i.name + " — ₹" + i.lineTotal + "</li>")
+        .join("");
+      return (
+        '<article class="card" data-id="' + o.id + '" data-num="' + o.orderNum + '">' +
+        "<h2>" + (o.orderId || ("#" + o.orderNum)) + " — ₹" + o.total + "</h2>" +
+        '<p class="meta"><strong>' + esc(o.customerName) + "</strong><br>" +
+        esc(o.phone) + "<br>" + esc(o.address) + "</p>" +
+        '<p><strong>UPI Transaction ID (verify in bank):</strong></p>' +
+        '<span class="utr">' + esc(o.upiTransactionId || "—") + "</span>" +
+        '<ul class="items">' + items + "</ul>" +
+        '<div class="actions">' +
+        '<button type="button" class="confirm">✅ Confirm payment</button>' +
+        '<button type="button" class="danger reject">Reject</button>' +
+        "</div></article>"
+      );
+    }
+
+    function esc(s) {
+      return String(s || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    function bindActions() {
+      listEl.querySelectorAll(".confirm").forEach((btn) => {
+        btn.onclick = async () => {
+          const card = btn.closest(".card");
+          btn.disabled = true;
+          try {
+            const res = await fetch(API + "/api/admin/orders/verify-payment", {
+              method: "POST",
+              headers: headers(),
+              body: JSON.stringify({ orderNum: Number(card.dataset.num) }),
+            });
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.message);
+            toastMsg(data.message || "Confirmed");
+            card.remove();
+          } catch (e) {
+            toastMsg(e.message);
+            btn.disabled = false;
+          }
+        };
+      });
+      listEl.querySelectorAll(".reject").forEach((btn) => {
+        btn.onclick = async () => {
+          const card = btn.closest(".card");
+          if (!confirm("Reject this order?")) return;
+          btn.disabled = true;
+          try {
+            const res = await fetch(API + "/api/admin/orders/reject-payment", {
+              method: "POST",
+              headers: headers(),
+              body: JSON.stringify({ orderNum: Number(card.dataset.num) }),
+            });
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.message);
+            toastMsg("Rejected");
+            card.remove();
+          } catch (e) {
+            toastMsg(e.message);
+            btn.disabled = false;
+          }
+        };
+      });
+    }
+
+    if (keyInput.value) load();
+  </script>
+</body>
+</html>
