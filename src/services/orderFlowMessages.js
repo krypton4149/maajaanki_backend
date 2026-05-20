@@ -1,4 +1,5 @@
 const checkoutService = require("./checkoutService");
+const { buildPublicPayUrl } = require("./payLinkService");
 
 const DIVIDER = "──────────────";
 
@@ -144,8 +145,15 @@ function buildUpiPayment({ upiId, payeeName, amount }) {
   if (upiId) {
     lines.push(`UPI ID: ${upiId}`);
     if (payeeName) lines.push(`Name: ${payeeName}`);
-    const link = buildUpiPayLink(upiId, payeeName, amount);
-    lines.push("", "Or tap to pay:", link);
+    const payUrl = buildPublicPayUrl(amount);
+    if (payUrl) {
+      lines.push("", "Tap to pay (opens UPI app):", payUrl);
+    } else {
+      lines.push(
+        "",
+        "Copy the UPI ID above and pay in PhonePe / GPay / Paytm."
+      );
+    }
   }
 
   lines.push(

@@ -1,6 +1,7 @@
 const couponService = require("./couponService");
 const checkoutService = require("./checkoutService");
 const flowMsg = require("./orderFlowMessages");
+const { buildPublicPayUrl } = require("./payLinkService");
 
 const sessions = new Map();
 
@@ -397,8 +398,14 @@ async function finalizeOrder(from, s, deps) {
  * @returns {Promise<boolean>}
  */
 exports.tryHandle = async (from, rawText, deps) => {
-  const { sendTextMessage, sendUpiQrImage, isOrderEnabled, createOrder, waFrom } =
-    deps;
+  const {
+    sendTextMessage,
+    sendUpiQrImage,
+    sendPayNowButton,
+    isOrderEnabled,
+    createOrder,
+    waFrom,
+  } = deps;
   const text = (rawText || "").trim();
   const lower = text.toLowerCase();
 
@@ -616,6 +623,14 @@ exports.tryHandle = async (from, rawText, deps) => {
           amount: finalTotal,
         })
       );
+      const payUrl = buildPublicPayUrl(finalTotal);
+      if (sendPayNowButton && payUrl) {
+        try {
+          await sendPayNowButton(from, { amount: finalTotal, payUrl });
+        } catch (err) {
+          console.error("sendPayNowButton failed", err?.message);
+        }
+      }
       if (sendUpiQrImage) {
         try {
           const qr = await sendUpiQrImage(

@@ -12,9 +12,11 @@ app.use("/assets", express.static(path.join(__dirname, "assets")));
 
 const webhookRoutes = require("./src/routes/webhookRoutes");
 const apiRoutes = require("./src/routes/apiRoutes");
+const { payPage } = require("./src/controllers/payController");
 
 app.use("/webhook", webhookRoutes);
 app.use("/api", apiRoutes);
+app.get("/pay", payPage);
 
 app.get("/", (req, res) => {
   res.send("Maa Jaanki Backend Running");

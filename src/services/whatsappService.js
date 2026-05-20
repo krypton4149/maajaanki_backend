@@ -78,6 +78,35 @@ exports.sendUpiQrImage = async (to, caption) => {
   return { sent: true, via: "upload" };
 };
 
+/** Tappable Pay Now button (HTTPS only — works in WhatsApp). */
+exports.sendPayNowButton = async (to, { amount, payUrl }) => {
+  if (!payUrl) return { sent: false, reason: "no_pay_url" };
+
+  await axios.post(
+    BASE_URL,
+    {
+      messaging_product: "whatsapp",
+      to,
+      type: "interactive",
+      interactive: {
+        type: "cta_url",
+        body: {
+          text: `Pay ₹${amount} securely via UPI. Tap the button below.`,
+        },
+        action: {
+          name: "cta_url",
+          parameters: {
+            display_text: "Pay Now",
+            url: payUrl,
+          },
+        },
+      },
+    },
+    { headers: authHeaders({ "Content-Type": "application/json" }) }
+  );
+  return { sent: true };
+};
+
 exports.sendTextMessage = async (to, body) => {
   const text =
     typeof body === "string" && body.length > WA_TEXT_MAX

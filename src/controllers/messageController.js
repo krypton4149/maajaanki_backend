@@ -2,6 +2,7 @@ const {
   sendTextMessage,
   sendInteractiveListMenu,
   sendUpiQrImage,
+  sendPayNowButton,
 } = require("../services/whatsappService");
 const { MENU_SECTIONS, getSectionById } = require("../data/jaankiMenu");
 const menuDbService = require("../services/menuDbService");
@@ -128,6 +129,7 @@ exports.handleIncomingMessage = async (message) => {
   const shoppingHandled = await shoppingFlow.tryHandle(from, text, {
     sendTextMessage,
     sendUpiQrImage,
+    sendPayNowButton,
     isOrderEnabled: isOrderDbEnabled,
     createOrder,
     waFrom: from,
