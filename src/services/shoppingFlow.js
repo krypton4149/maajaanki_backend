@@ -206,36 +206,114 @@ function pendingPickItems(p) {
   return [];
 }
 
+function isEachItemQtyMode(p) {
+  return p?.mode === "each" && pendingPickItems(p).length > 1;
+}
+
+async function finishEachItemPick(from, s, deps) {
+  const items = pendingPickItems(s.pendingPick);
+  const added = items.map((it) => {
+    const qty = Math.min(99, Math.max(1, Number(it.qty) || 1));
+    return {
+      name: it.name,
+      priceRupees: it.priceRupees,
+      qty,
+      lineTotal: lineTotalFor(it, qty),
+    };
+  });
+
+  s.cart.push(...added);
+  s.phase = "shop";
+  delete s.pendingPick;
+  await refreshCouponOnCart(s);
+  sessions.set(from, s);
+
+  const totals = s.coupon ? computeCartTotals(s.cart, s.coupon) : null;
+  await deps.sendTextMessage(
+    from,
+    flowMsg.buildAddedToCart(
+      added,
+      totals ? { finalTotal: totals.finalTotal, coupon: s.coupon } : null
+    )
+  );
+  return true;
+}
+
+async function applyQuantityForCurrentItem(from, s, qty, deps) {
+  const p = s.pendingPick;
+  const items = pendingPickItems(p);
+  const q = Math.min(99, Math.max(1, Number(qty) || 1));
+
+  if (isEachItemQtyMode(p)) {
+    const idx = p.currentIndex || 0;
+    if (items[idx]) items[idx].qty = q;
+    p.items = items;
+    p.currentIndex = idx + 1;
+
+    if (p.currentIndex >= items.length) {
+      return finishEachItemPick(from, s, deps);
+    }
+
+    p.qty = 1;
+    sessions.set(from, s);
+    await promptQuantityPicker(from, s, deps);
+    return true;
+  }
+
+  p.qty = q;
+  sessions.set(from, s);
+  return confirmPendingPick(from, s, deps);
+}
+
 async function promptQuantityPicker(from, s, deps) {
   const p = s.pendingPick;
   const items = pendingPickItems(p);
   if (!items.length) return;
   sessions.set(from, s);
 
-  const pickerItems = items.map((it) => ({
-    itemName: it.name,
-    priceRupees: it.priceRupees,
-  }));
+  const eachMode = isEachItemQtyMode(p);
+  const idx = eachMode ? p.currentIndex || 0 : 0;
+  const current = items[idx] || items[0];
+  const step = eachMode
+    ? { current: idx + 1, total: items.length }
+    : null;
 
-  if (deps.sendQuantityPicker) {
+  const pickerPayload = {
+    items: [
+      {
+        itemName: current.name,
+        priceRupees: current.priceRupees,
+      },
+    ],
+    qty: current.qty ?? p.qty ?? 1,
+    step,
+  };
+
+  if (!eachMode && deps.sendQuantityPicker) {
     try {
-      await deps.sendQuantityPicker(from, {
-        items: pickerItems,
-        qty: p.qty || 1,
-      });
+      await deps.sendQuantityPicker(from, pickerPayload);
       return;
     } catch (err) {
       console.error("sendQuantityPicker failed", err?.message);
     }
   }
+
   await deps.sendTextMessage(
     from,
-    flowMsg.buildQuantityPickerText({ items, qty: p.qty || 1 })
+    flowMsg.buildQuantityPickerText({
+      items: [current],
+      qty: pickerPayload.qty,
+      step,
+    })
   );
 }
 
 async function confirmPendingPick(from, s, deps) {
   const p = s.pendingPick;
+  if (isEachItemQtyMode(p)) {
+    return applyQuantityForCurrentItem(from, s, p.qty || 1, deps);
+  }
+
   const items = pendingPickItems(p);
   if (!items.length) return false;
 
@@ -268,11 +346,13 @@ function startPickQuantity(s, rowsOrRow) {
   const rows = Array.isArray(rowsOrRow) ? rowsOrRow : [rowsOrRow];
   s.phase = "pick_qty";
   s.pendingPick = {
+    mode: rows.length > 1 ? "each" : "single",
     items: rows.map((row) => ({
       num: row.num,
       name: row.name,
       priceRupees: row.priceRupees,
     })),
+    currentIndex: 0,
     qty: 1,
   };
 }
@@ -767,6 +847,10 @@ exports.tryHandle = async (from, rawText, deps) => {
 
     const qtyTyped = parseInt(text, 10);
     if (/^\d+$/.test(text) && qtyTyped >= 1 && qtyTyped <= 99) {
+      if (isEachItemQtyMode(s.pendingPick)) {
+        await applyQuantityForCurrentItem(from, s, qtyTyped, deps);
+        return true;
+      }
       s.pendingPick.qty = qtyTyped;
       sessions.set(from, s);
       await promptQuantityPicker(from, s, deps);
@@ -775,7 +859,9 @@ exports.tryHandle = async (from, rawText, deps) => {
 
     await sendTextMessage(
       from,
-      "*Type quantity* (e.g. 2), then tap *Add to cart* or reply *ADD*.\n*CANCEL* to go back."
+      isEachItemQtyMode(s.pendingPick)
+        ? "*Type quantity* for this item (e.g. 2). Next item comes after.\n*CANCEL* to go back."
+        : "*Type quantity* (e.g. 2), then tap *Add to cart* or reply *ADD*.\n*CANCEL* to go back."
     );
     return true;
   }

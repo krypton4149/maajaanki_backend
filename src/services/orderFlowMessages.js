@@ -232,47 +232,40 @@ function buildCatalogFooter() {
   return [
     DIVIDER,
     "Type *item number* (e.g. *3*)",
-    "Multiple items: *4 6* (space between numbers)",
-    "Then *type quantity* and tap *Add to cart*",
+    "Multiple: *2 3 5* — set quantity *for each* item",
+    "Single item: type qty, tap *Add to cart*",
     "",
     "*CART* — checkout  ·  *MENU* — more categories",
   ].join("\n");
 }
 
-function buildQuantityPickerText({ items, qty }) {
+function buildQuantityPickerText({ items, qty, step }) {
   const list = Array.isArray(items) && items.length ? items : [];
-  if (list.length === 1) {
-    const it = list[0];
-    const price =
-      it.priceRupees == null || Number.isNaN(Number(it.priceRupees))
-        ? "Price on call"
-        : `₹${Number(it.priceRupees)}`;
-    return [
-      `*${it.name}* · ${price}`,
-      "",
-      "*Type quantity* (e.g. 2) then reply *ADD*",
-      "",
-      `Quantity: *${qty}*`,
-      "*CANCEL* to go back",
-    ].join("\n");
+  const it = list[0];
+  if (!it) return "Type quantity (e.g. 2). *CANCEL* to go back.";
+
+  const price =
+    it.priceRupees == null || Number.isNaN(Number(it.priceRupees))
+      ? "Price on call"
+      : `₹${Number(it.priceRupees)}`;
+
+  const lines = [];
+  if (step?.total > 1) {
+    lines.push(`*Item ${step.current} of ${step.total}*`, "");
   }
-  const lines = list.map((it) => {
-    const price =
-      it.priceRupees == null || Number.isNaN(Number(it.priceRupees))
-        ? "Ask"
-        : `₹${Number(it.priceRupees)}`;
-    return `• ${it.name} — ${price}`;
-  });
-  return [
-    `*${list.length} items selected*`,
+  lines.push(
+    `*${it.name}* · ${price}`,
     "",
-    ...lines,
-    "",
-    "*Type quantity* (same for all, e.g. 2) then reply *ADD*",
-    "",
-    `Quantity: *${qty}*`,
-    "*CANCEL* to go back",
-  ].join("\n");
+    "*Type quantity* for this item (e.g. 2)",
+    ""
+  );
+  if (step?.total > 1) {
+    lines.push("Send the number — next item will appear.");
+  } else {
+    lines.push(`Quantity: *${qty}*`, "Then reply *ADD* or tap *Add to cart*.");
+  }
+  lines.push("", "*CANCEL* to go back");
+  return lines.join("\n");
 }
 
 function buildOrderFeedbackRequest() {

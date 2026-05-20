@@ -108,46 +108,32 @@ exports.sendPayNowButton = async (to, { amount, payUrl }) => {
 };
 
 /** Quantity step: type a number, then tap Add to cart. */
-exports.sendQuantityPicker = async (to, { items, qty }) => {
+exports.sendQuantityPicker = async (to, { items, qty, step }) => {
   const list = Array.isArray(items) && items.length ? items : [];
-  let body;
+  const { itemName, priceRupees } = list[0] || {};
+  const price =
+    priceRupees == null || Number.isNaN(Number(priceRupees))
+      ? "Price on call"
+      : `₹${Number(priceRupees)}`;
 
-  if (list.length === 1) {
-    const { itemName, priceRupees } = list[0];
-    const price =
-      priceRupees == null || Number.isNaN(Number(priceRupees))
-        ? "Price on call"
-        : `₹${Number(priceRupees)}`;
-    body = [
-      `*${itemName}*`,
-      price,
-      "",
-      "*Type quantity* (reply with a number, e.g. 2)",
-      "",
-      `Quantity: *${qty}*`,
-      "",
-      "Then tap *Add to cart* below.",
-    ].join("\n");
-  } else {
-    const lines = list.map((it) => {
-      const price =
-        it.priceRupees == null || Number.isNaN(Number(it.priceRupees))
-          ? "Ask"
-          : `₹${Number(it.priceRupees)}`;
-      return `• ${it.itemName} — ${price}`;
-    });
-    body = [
-      `*${list.length} items selected*`,
-      "",
-      ...lines,
-      "",
-      "*Type quantity* (same for all items, e.g. 2)",
-      "",
-      `Quantity: *${qty}*`,
-      "",
-      "Then tap *Add to cart* below.",
-    ].join("\n");
-  }
+  const stepLine =
+    step?.total > 1
+      ? `*Item ${step.current} of ${step.total}*`
+      : null;
+
+  const body = [
+    stepLine,
+    `*${itemName}*`,
+    price,
+    "",
+    "*Type quantity* for this item (e.g. 2)",
+    "",
+    step?.total > 1
+      ? "Next item comes after you send quantity."
+      : "Then tap *Add to cart* below.",
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   await axios.post(
     BASE_URL,
