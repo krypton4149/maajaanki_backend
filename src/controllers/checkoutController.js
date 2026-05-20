@@ -133,6 +133,7 @@ exports.placeOrder = async (req, res) => {
 
     const paymentConfig = checkoutService.getPaymentConfig();
     const upiMethod = paymentConfig.methods.find((m) => m.id === "upi");
+    const { getQrPublicUrl } = require("../services/upiQrService");
 
     return res.status(201).json({
       ok: true,
@@ -154,6 +155,7 @@ exports.placeOrder = async (req, res) => {
               payeeName: upiMethod.payeeName,
               amount: calc.finalTotal,
               note: `Order #${inserted.order_num}`,
+              qrImageUrl: getQrPublicUrl() || null,
             }
           : null,
       whatsappConfirmation: notify,

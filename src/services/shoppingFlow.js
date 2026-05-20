@@ -397,7 +397,8 @@ async function finalizeOrder(from, s, deps) {
  * @returns {Promise<boolean>}
  */
 exports.tryHandle = async (from, rawText, deps) => {
-  const { sendTextMessage, isOrderEnabled, createOrder, waFrom } = deps;
+  const { sendTextMessage, sendUpiQrImage, isOrderEnabled, createOrder, waFrom } =
+    deps;
   const text = (rawText || "").trim();
   const lower = text.toLowerCase();
 
@@ -610,11 +611,31 @@ exports.tryHandle = async (from, rawText, deps) => {
       await sendTextMessage(
         from,
         flowMsg.buildUpiPayment({
-          upiId: upi.upiId,
-          payeeName: upi.payeeName,
+          upiId: upi?.upiId,
+          payeeName: upi?.payeeName,
           amount: finalTotal,
         })
       );
+      if (sendUpiQrImage) {
+        try {
+          const qr = await sendUpiQrImage(
+            from,
+            `Scan to pay ₹${finalTotal} · Maa Jaanki Restaurant`
+          );
+          if (!qr?.sent) {
+            await sendTextMessage(
+              from,
+              "QR image unavailable. Use the UPI ID above to pay."
+            );
+          }
+        } catch (err) {
+          console.error("sendUpiQrImage failed", err?.message);
+          await sendTextMessage(
+            from,
+            "Could not send QR image. Use the UPI ID above to pay."
+          );
+        }
+      }
       return true;
     }
 
@@ -629,7 +650,7 @@ exports.tryHandle = async (from, rawText, deps) => {
     await sendTextMessage(
       from,
       config.upiEnabled
-        ? "Reply *1* Cash on Delivery · *2* UPI Payment"
+        ? "Reply *1* for COD  ·  *2* for UPI & QR"
         : "Reply *1* for Cash on Delivery"
     );
     return true;

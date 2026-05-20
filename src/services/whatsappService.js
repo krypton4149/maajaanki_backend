@@ -1,13 +1,82 @@
 const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
 const {
   MENU_SECTIONS,
   getWelcomeBody,
   BRAND_NAME,
 } = require("../data/jaankiMenu");
+const { getQrLocalPath, getQrPublicUrl } = require("./upiQrService");
 
-const BASE_URL = `https://graph.facebook.com/v19.0/${process.env.PHONE_NUMBER_ID}/messages`;
+const GRAPH = `https://graph.facebook.com/v19.0`;
+const BASE_URL = `${GRAPH}/${process.env.PHONE_NUMBER_ID}/messages`;
 
 const WA_TEXT_MAX = 4096;
+
+function authHeaders(extra = {}) {
+  return {
+    Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+    ...extra,
+  };
+}
+
+async function uploadImageFile(filePath) {
+  const abs = path.resolve(filePath);
+  const buf = fs.readFileSync(abs);
+  const ext = path.extname(abs).toLowerCase();
+  const mime = ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : "image/png";
+
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("type", mime);
+  form.append("file", new Blob([buf], { type: mime }), path.basename(abs));
+
+  const res = await fetch(`${GRAPH}/${process.env.PHONE_NUMBER_ID}/media`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: form,
+  });
+
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json?.error?.message || "WhatsApp media upload failed");
+  }
+  return json.id;
+}
+
+exports.sendImageMessage = async (to, { link, mediaId, caption }) => {
+  const image = mediaId ? { id: mediaId } : { link };
+  if (caption) image.caption = String(caption).slice(0, 1024);
+
+  await axios.post(
+    BASE_URL,
+    {
+      messaging_product: "whatsapp",
+      to,
+      type: "image",
+      image,
+    },
+    { headers: authHeaders({ "Content-Type": "application/json" }) }
+  );
+};
+
+/** Sends bundled UPI QR (public URL or upload from assets/upi-qr.png). */
+exports.sendUpiQrImage = async (to, caption) => {
+  const publicUrl = getQrPublicUrl();
+  if (publicUrl) {
+    await exports.sendImageMessage(to, { link: publicUrl, caption });
+    return { sent: true, via: "link" };
+  }
+
+  const localPath = getQrLocalPath();
+  if (!localPath) {
+    return { sent: false, reason: "qr_not_configured" };
+  }
+
+  const mediaId = await uploadImageFile(localPath);
+  await exports.sendImageMessage(to, { mediaId, caption });
+  return { sent: true, via: "upload" };
+};
 
 exports.sendTextMessage = async (to, body) => {
   const text =
@@ -22,12 +91,7 @@ exports.sendTextMessage = async (to, body) => {
       to,
       text: { body: text },
     },
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-    }
+    { headers: authHeaders({ "Content-Type": "application/json" }) }
   );
 };
 
@@ -71,11 +135,6 @@ exports.sendInteractiveListMenu = async (to, rows) => {
         },
       },
     },
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-    }
+    { headers: authHeaders({ "Content-Type": "application/json" }) }
   );
 };

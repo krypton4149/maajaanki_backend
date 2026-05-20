@@ -118,8 +118,8 @@ function buildPaymentMenu() {
   ];
 
   if (config.upiEnabled) {
-    lines.push("2️⃣ UPI Payment");
-    lines.push("", "Reply *1* or *2*");
+    lines.push("2️⃣ UPI & QR Code");
+    lines.push("", "Reply *1* for COD  ·  *2* for UPI");
   } else {
     lines.push("", "Reply *1* for Cash on Delivery");
   }
@@ -132,22 +132,30 @@ function buildCodSelected() {
 }
 
 function buildUpiPayment({ upiId, payeeName, amount }) {
-  const link = buildUpiPayLink(upiId, payeeName, amount);
-  return [
-    "✅ UPI Payment",
+  const lines = [
+    "✅ UPI & QR Payment",
     "",
-    "Scan & pay with PhonePe, Google Pay, or Paytm.",
+    "Scan the QR code in the next message",
+    "with PhonePe, Google Pay, or Paytm.",
     "",
-    `UPI ID: ${upiId}`,
     `Amount: ₹${amount}`,
-    "",
-    "Payment link (tap to open UPI app):",
-    link,
+  ];
+
+  if (upiId) {
+    lines.push(`UPI ID: ${upiId}`);
+    if (payeeName) lines.push(`Name: ${payeeName}`);
+    const link = buildUpiPayLink(upiId, payeeName, amount);
+    lines.push("", "Or tap to pay:", link);
+  }
+
+  lines.push(
     "",
     DIVIDER,
     "After payment, reply *DONE* to confirm your order.",
-    "Reply MENU to cancel.",
-  ].join("\n");
+    "Reply MENU to cancel."
+  );
+
+  return lines.join("\n");
 }
 
 function buildOrderConfirmed({

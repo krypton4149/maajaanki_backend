@@ -1,4 +1,5 @@
 const couponService = require("./couponService");
+const { isQrAvailable } = require("./upiQrService");
 
 const PAYMENT_METHODS = {
   cod: {
@@ -100,18 +101,21 @@ function getPaymentConfig() {
   const payeeName = String(
     process.env.RESTAURANT_UPI_PAYEE_NAME || "Maa Jaanki Restaurant"
   ).trim();
+  const qrAvailable = isQrAvailable();
 
   const methods = [{ ...PAYMENT_METHODS.cod }];
 
-  if (upiId) {
+  if (upiId || qrAvailable) {
     methods.push({
       ...PAYMENT_METHODS.upi,
-      upiId,
+      label: "UPI & QR Code",
+      upiId: upiId || null,
       payeeName,
+      qrAvailable,
     });
   }
 
-  return { methods, upiEnabled: !!upiId };
+  return { methods, upiEnabled: !!(upiId || qrAvailable) };
 }
 
 module.exports = {
