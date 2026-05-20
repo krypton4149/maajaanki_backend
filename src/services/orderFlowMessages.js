@@ -132,6 +132,24 @@ function buildCodSelected() {
   return "✅ Cash on Delivery Selected\n\nConfirming your order…";
 }
 
+function buildUpiAwaitProof(amount) {
+  return [
+    "📸 Payment verification required",
+    "",
+    `After paying ₹${amount}, send ONE of the following:`,
+    "",
+    "• Your 12-digit UTR / Transaction ID",
+    "  Example: 428765432109",
+    "",
+    "• Screenshot of successful UPI payment",
+    "",
+    "⚠️ Typing DONE alone will NOT confirm your order.",
+    "We confirm only after verifying your payment.",
+    "",
+    "Reply MENU to cancel.",
+  ].join("\n");
+}
+
 function buildUpiPayment({ upiId, payeeName, amount }) {
   const lines = [
     "✅ UPI & QR Payment",
@@ -159,11 +177,56 @@ function buildUpiPayment({ upiId, payeeName, amount }) {
   lines.push(
     "",
     DIVIDER,
-    "After payment, reply *DONE* to confirm your order.",
-    "Reply MENU to cancel."
+    "Next: send your UTR or payment screenshot (see message after QR)."
   );
 
   return lines.join("\n");
+}
+
+function buildOrderPendingVerification({
+  orderId,
+  cart,
+  total,
+  utr,
+  hasScreenshot,
+}) {
+  const lines = [
+    "⏳ Order received — payment under review",
+    "",
+    `Order ID: ${orderId}`,
+    "",
+    "Items:",
+    ...cartLinesPlain(cart),
+    "",
+    `Total: ₹${total}`,
+    `Payment: UPI`,
+  ];
+
+  if (utr) lines.push(`UTR submitted: ${utr}`);
+  if (hasScreenshot) lines.push("Payment screenshot: received");
+
+  lines.push(
+    "",
+    "We are verifying your payment.",
+    "You will get Order Confirmed on WhatsApp",
+    "once payment is verified (usually 5–15 mins).",
+    "",
+    "Thank you — Maa Jaanki Restaurant 🙏"
+  );
+
+  return lines.join("\n");
+}
+
+function buildInvalidPaymentProof() {
+  return [
+    "Could not read a valid Transaction ID.",
+    "",
+    "Please send:",
+    "• 12-digit UTR (numbers only), or",
+    "• A clear screenshot of UPI payment success",
+    "",
+    "Example UTR: 428765432109",
+  ].join("\n");
 }
 
 function buildOrderConfirmed({
@@ -249,6 +312,9 @@ module.exports = {
   buildPaymentMenu,
   buildCodSelected,
   buildUpiPayment,
+  buildUpiAwaitProof,
+  buildOrderPendingVerification,
+  buildInvalidPaymentProof,
   buildOrderConfirmed,
   buildCatalogFooter,
   buildAddedToCart,

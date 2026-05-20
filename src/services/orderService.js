@@ -123,6 +123,9 @@ exports.createOrder = async ({
   payment_method,
   payment_status,
   order_source,
+  upi_transaction_id,
+  payment_proof_media_id,
+  payment_verified,
   orderLines,
 }) => {
   const supabase = getSupabase();
@@ -156,6 +159,13 @@ exports.createOrder = async ({
   if (payment_method) base.payment_method = payment_method;
   if (payment_status) base.payment_status = payment_status;
   if (order_source) base.order_source = order_source;
+  if (upi_transaction_id) {
+    base.upi_transaction_id = String(upi_transaction_id).trim().slice(0, 64);
+  }
+  if (payment_proof_media_id) {
+    base.payment_proof_media_id = String(payment_proof_media_id).trim().slice(0, 128);
+  }
+  if (payment_verified === true) base.payment_verified = true;
   if (note.length) base.line_items_note = note;
 
   const maxOuter = 8;

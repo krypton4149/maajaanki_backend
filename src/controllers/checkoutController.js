@@ -99,6 +99,16 @@ exports.placeOrder = async (req, res) => {
     const phone10 = phone.slice(-10);
     const wa = orderNotification.formatPhoneForWhatsApp(phone10);
 
+    const upiTxn = String(body.upiTransactionId || body.utr || "").trim();
+    const isUpi = paymentMethod === "upi";
+    const paymentStatus = isUpi
+      ? "pending_verification"
+      : checkoutService.paymentStatusFor(paymentMethod);
+
+    if (isUpi && upiTxn) {
+      noteParts.push(`UTR: ${upiTxn}`);
+    }
+
     const inserted = await orderService.createOrder({
       customer_name: name,
       phone: phone10,
@@ -110,8 +120,10 @@ exports.placeOrder = async (req, res) => {
       coupon_code: calc.coupon?.code || null,
       total: calc.finalTotal,
       payment_method: paymentMethod,
-      payment_status: checkoutService.paymentStatusFor(paymentMethod),
+      payment_status: paymentStatus,
       order_source: "website",
+      upi_transaction_id: isUpi && upiTxn ? upiTxn : null,
+      payment_verified: !isUpi,
       orderLines: cartLines,
     });
 
@@ -119,17 +131,20 @@ exports.placeOrder = async (req, res) => {
       await couponService.incrementCouponUsage(calc.coupon.code);
     }
 
-    const notify = await orderNotification.sendOrderConfirmation({
-      phone: phone10,
-      orderNum: inserted.order_num,
-      subtotal: calc.subtotal,
-      discountAmount: calc.discount,
-      couponCode: calc.coupon?.code,
-      total: calc.finalTotal,
-      paymentMethod,
-      paymentStatus: inserted.payment_status,
-      customerName: name,
-    });
+    let notify = { sent: false };
+    if (!isUpi) {
+      notify = await orderNotification.sendOrderConfirmation({
+        phone: phone10,
+        orderNum: inserted.order_num,
+        subtotal: calc.subtotal,
+        discountAmount: calc.discount,
+        couponCode: calc.coupon?.code,
+        total: calc.finalTotal,
+        paymentMethod,
+        paymentStatus: inserted.payment_status,
+        customerName: name,
+      });
+    }
 
     const paymentConfig = checkoutService.getPaymentConfig();
     const upiMethod = paymentConfig.methods.find((m) => m.id === "upi");

@@ -67,8 +67,26 @@ function buildNumberedCategoryMessage(title, catalogRows) {
   ].join("\n");
 }
 
+const shoppingDeps = (from) => ({
+  sendTextMessage,
+  sendUpiQrImage,
+  sendPayNowButton,
+  isOrderEnabled: isOrderDbEnabled,
+  createOrder,
+  waFrom: from,
+});
+
 exports.handleIncomingMessage = async (message) => {
   const from = message.from;
+
+  if (message.type === "image") {
+    const handled = await shoppingFlow.tryHandlePaymentProof(
+      from,
+      message,
+      shoppingDeps(from)
+    );
+    if (handled) return;
+  }
 
   if (message.type === "interactive") {
     const listId = message.interactive?.list_reply?.id;
@@ -126,14 +144,11 @@ exports.handleIncomingMessage = async (message) => {
     return sendInteractiveListMenu(from, rows);
   }
 
-  const shoppingHandled = await shoppingFlow.tryHandle(from, text, {
-    sendTextMessage,
-    sendUpiQrImage,
-    sendPayNowButton,
-    isOrderEnabled: isOrderDbEnabled,
-    createOrder,
-    waFrom: from,
-  });
+  const shoppingHandled = await shoppingFlow.tryHandle(
+    from,
+    text,
+    shoppingDeps(from)
+  );
   if (shoppingHandled) {
     return;
   }
