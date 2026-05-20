@@ -249,7 +249,11 @@ function buildAddedToCart(added, totalsWithCoupon) {
   if (totalsWithCoupon?.finalTotal != null && totalsWithCoupon.coupon) {
     parts.push("", `Cart total: ₹${totalsWithCoupon.finalTotal} (coupon applied)`);
   }
-  parts.push("", "Type *CART* when ready to checkout.");
+  parts.push(
+    "",
+    "Type *MENU* to browse more items.",
+    "Type *CART* when ready to checkout."
+  );
   return parts.join("\n");
 }
 
