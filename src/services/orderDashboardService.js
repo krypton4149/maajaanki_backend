@@ -20,6 +20,7 @@ function mapOrderRow(row) {
     paymentVerified: row.payment_verified,
     orderStatus: row.order_status || "confirmed",
     outForDeliveryAt: row.out_for_delivery_at || null,
+    outForDeliveryWhatsappSent: row.out_for_delivery_whatsapp_sent === true,
     orderSource: row.order_source,
     lineItemsNote: row.line_items_note,
     createdAt: row.created_at || null,

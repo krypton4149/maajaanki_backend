@@ -1,6 +1,9 @@
 const {
   sendOrderConfirmedIfNeeded,
 } = require("../services/orderConfirmationService");
+const {
+  sendOutForDeliveryIfNeeded,
+} = require("../services/orderDeliveryService");
 
 function checkWebhookSecret(req) {
   const expected =
@@ -20,7 +23,8 @@ function checkWebhookSecret(req) {
  * POST /api/webhooks/supabase/orders
  *
  * Supabase Database Webhook on public.orders UPDATE.
- * When payment_verified becomes true, sends Order Confirmed WhatsApp.
+ * - payment_verified → true: Order Confirmed WhatsApp
+ * - order_status → out_for_delivery: out-for-delivery WhatsApp (dashboard tick)
  */
 exports.onOrderUpdate = async (req, res) => {
   try {
@@ -45,35 +49,58 @@ exports.onOrderUpdate = async (req, res) => {
       return res.status(400).json({ ok: false, message: "Missing order record." });
     }
 
+    const response = { ok: true };
+
+    const status = record.order_status;
+    const oldStatus = oldRecord?.order_status;
+    const becameOutForDelivery =
+      status === "out_for_delivery" && oldStatus !== "out_for_delivery";
+    const needsDeliveryMsg =
+      status === "out_for_delivery" &&
+      record.out_for_delivery_whatsapp_sent !== true;
+
+    if (becameOutForDelivery || needsDeliveryMsg) {
+      const delivery = await sendOutForDeliveryIfNeeded({
+        orderId: record.id,
+        force: false,
+      });
+      response.outForDelivery = delivery;
+      if (!delivery.ok && delivery.reason !== "already_sent") {
+        console.warn(
+          "supabase webhook: out-for-delivery not sent",
+          record.id,
+          delivery.reason,
+          delivery.detail
+        );
+      }
+    }
+
     const verified = record.payment_verified === true;
-    if (!verified) {
-      return res.json({ ok: true, skipped: "payment_not_verified" });
+    if (verified) {
+      const wasVerified = oldRecord?.payment_verified === true;
+      const alreadySent = record.confirmation_whatsapp_sent === true;
+
+      if (!(wasVerified && alreadySent)) {
+        const whatsapp = await sendOrderConfirmedIfNeeded({
+          orderId: record.id,
+          force: false,
+        });
+        response.whatsappConfirmation = whatsapp;
+        if (!whatsapp.sent) {
+          console.warn(
+            "supabase webhook: confirmation not sent",
+            record.id,
+            whatsapp.reason
+          );
+        }
+      }
     }
 
-    const wasVerified = oldRecord?.payment_verified === true;
-    const alreadySent = record.confirmation_whatsapp_sent === true;
-
-    if (wasVerified && alreadySent) {
-      return res.json({ ok: true, skipped: "already_confirmed" });
+    if (!response.outForDelivery && !response.whatsappConfirmation) {
+      response.skipped = "no_action";
     }
 
-    const whatsapp = await sendOrderConfirmedIfNeeded({
-      orderId: record.id,
-      force: false,
-    });
-
-    if (!whatsapp.sent) {
-      console.warn(
-        "supabase webhook: confirmation not sent",
-        record.id,
-        whatsapp.reason
-      );
-    }
-
-    return res.json({
-      ok: true,
-      whatsappConfirmation: whatsapp,
-    });
+    return res.json(response);
   } catch (err) {
     console.error("supabaseWebhook onOrderUpdate", err?.message);
     return res.status(500).json({ ok: false, message: "Webhook handler failed." });

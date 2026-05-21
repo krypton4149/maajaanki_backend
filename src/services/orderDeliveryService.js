@@ -13,10 +13,28 @@ function parseOrderNumInput(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+async function readDeliverySentFlag(orderId) {
+  const supabase = getSupabase();
+  if (!supabase) return false;
+
+  const { data, error } = await supabase
+    .from("orders")
+    .select("out_for_delivery_whatsapp_sent")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (error && /out_for_delivery_whatsapp_sent/i.test(error.message || "")) {
+    return false;
+  }
+  if (error) throw error;
+  return data?.out_for_delivery_whatsapp_sent === true;
+}
+
 /**
- * Mark order out for delivery in Supabase and notify customer on WhatsApp.
+ * Send out-for-delivery WhatsApp and sync order status in Supabase.
+ * Safe when dashboard already set order_status = out_for_delivery (uses sent flag).
  */
-async function markOutForDelivery({ orderId, orderNum, orderRef, force = false }) {
+async function sendOutForDeliveryIfNeeded({ orderId, orderNum, orderRef, force = false }) {
   const parsedNum =
     orderNum != null
       ? Number(orderNum)
@@ -36,8 +54,18 @@ async function markOutForDelivery({ orderId, orderNum, orderRef, force = false }
     return { ok: false, reason: "order_not_found" };
   }
 
-  if (order.orderStatus === "out_for_delivery" && !force) {
-    return { ok: true, alreadySent: true, order, skipped: "already_out_for_delivery" };
+  if (!force) {
+    const alreadySent =
+      order.outForDeliveryWhatsappSent === true ||
+      (await readDeliverySentFlag(order.id));
+    if (alreadySent) {
+      return {
+        ok: true,
+        order,
+        skipped: "already_sent",
+        whatsappSent: false,
+      };
+    }
   }
 
   const to = formatPhoneForWhatsApp(order.phone, order.whatsapp);
@@ -52,7 +80,7 @@ async function markOutForDelivery({ orderId, orderNum, orderRef, force = false }
   try {
     await sendTextMessage(to, message);
   } catch (err) {
-    console.error("markOutForDelivery WhatsApp failed", order.id, err?.message);
+    console.error("sendOutForDelivery WhatsApp failed", order.id, err?.message);
     return {
       ok: false,
       reason: "whatsapp_send_failed",
@@ -66,30 +94,46 @@ async function markOutForDelivery({ orderId, orderNum, orderRef, force = false }
     return { ok: false, reason: "supabase_not_configured", order };
   }
 
+  const now = new Date().toISOString();
   const patch = {
     order_status: "out_for_delivery",
-    out_for_delivery_at: new Date().toISOString(),
+    out_for_delivery_at: order.outForDeliveryAt || now,
+    out_for_delivery_whatsapp_sent: true,
   };
 
   const { error } = await supabase.from("orders").update(patch).eq("id", order.id);
 
-  if (error && /order_status|out_for_delivery_at/i.test(error.message || "")) {
-    console.error("markOutForDelivery DB update", error.message);
-    return {
-      ok: true,
-      whatsappSent: true,
-      order,
-      warning: "WhatsApp sent but order_status column missing — run migration 009.",
-    };
-  }
+  if (error && /order_status|out_for_delivery/i.test(error.message || "")) {
+    const { error: flagErr } = await supabase
+      .from("orders")
+      .update({ out_for_delivery_whatsapp_sent: true })
+      .eq("id", order.id);
 
-  if (error) throw error;
+    if (flagErr && /out_for_delivery_whatsapp_sent/i.test(flagErr.message || "")) {
+      console.error("sendOutForDelivery DB update", error.message);
+      return {
+        ok: true,
+        whatsappSent: true,
+        order,
+        warning:
+          "WhatsApp sent but DB columns missing — run migrations 009 and 010.",
+      };
+    }
+  } else if (error) {
+    throw error;
+  }
 
   const full = await orderDashboard.getOrderByIdOrNum({ orderId: order.id });
   return { ok: true, whatsappSent: true, order: full };
 }
 
+/** @deprecated alias */
+async function markOutForDelivery(opts) {
+  return sendOutForDeliveryIfNeeded(opts);
+}
+
 module.exports = {
+  sendOutForDeliveryIfNeeded,
   markOutForDelivery,
   parseOrderNumInput,
 };

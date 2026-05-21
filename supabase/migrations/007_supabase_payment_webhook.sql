@@ -9,5 +9,8 @@
 --    (or set SUPABASE_WEBHOOK_SECRET on Vercel and use that value)
 -- 5. Save
 --
--- After this, any UPDATE where payment_verified becomes true triggers
--- "Order Confirmed" on WhatsApp (once per order).
+-- After this, any UPDATE on public.orders triggers:
+-- - payment_verified → true: "Order Confirmed" WhatsApp (once per order)
+-- - order_status → out_for_delivery: "out for delivery" WhatsApp (once per order)
+--
+-- Run migrations 009 and 010 for order_status + out_for_delivery_whatsapp_sent.

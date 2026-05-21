@@ -189,7 +189,7 @@ exports.markOutForDelivery = async (req, res) => {
       });
     }
 
-    const result = await orderDelivery.markOutForDelivery({
+    const result = await orderDelivery.sendOutForDeliveryIfNeeded({
       orderId,
       orderNum,
       orderRef,
@@ -209,10 +209,10 @@ exports.markOutForDelivery = async (req, res) => {
       return res.status(400).json({ ok: false, message: msg, result });
     }
 
-    if (result.skipped === "already_out_for_delivery") {
+    if (result.skipped === "already_sent") {
       return res.json({
         ok: true,
-        message: "Already out for delivery.",
+        message: "Out-for-delivery WhatsApp was already sent for this order.",
         order: result.order,
       });
     }
