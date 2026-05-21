@@ -132,10 +132,8 @@ function buildCodSelected() {
 }
 
 /** QR image caption — pay info only (instruction sent as separate text). */
-function buildUpiQrCaption({ amount, upiId }) {
-  const lines = [`*Pay ₹${amount}*`, "Scan QR · PhonePe / GPay / Paytm"];
-  if (upiId) lines.push("", upiId);
-  return lines.join("\n");
+function buildUpiQrCaption({ amount }) {
+  return [`*Pay ₹${amount}*`, "Scan QR · PhonePe / GPay / Paytm"].join("\n");
 }
 
 /** Standalone prompt — own message bubble reads larger than QR caption. */
@@ -151,13 +149,12 @@ function buildTxnLast4Prompt() {
 }
 
 /** Fallback if QR image cannot be sent */
-function buildUpiPaymentShort({ upiId, amount }) {
-  const lines = [`*Pay ₹${amount}*`];
-  if (upiId) lines.push(upiId, "");
-  lines.push(
-    buildTxnLast4Prompt().split("\n").slice(1).join("\n")
-  );
-  return lines.join("\n");
+function buildUpiPaymentShort({ amount }) {
+  return [
+    `*Pay ₹${amount}*`,
+    "",
+    buildTxnLast4Prompt().split("\n").slice(1).join("\n"),
+  ].join("\n");
 }
 
 function buildOrderPendingVerification({ orderId, cart, total, utr }) {

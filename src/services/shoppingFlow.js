@@ -983,10 +983,7 @@ exports.tryHandle = async (from, rawText, deps) => {
       s.phase = "upi_await_proof";
       sessions.set(from, s);
       const upi = config.methods.find((m) => m.id === "upi");
-      const caption = flowMsg.buildUpiQrCaption({
-        amount: finalTotal,
-        upiId: upi?.upiId,
-      });
+      const caption = flowMsg.buildUpiQrCaption({ amount: finalTotal });
       let sent = false;
       if (sendUpiQrImage) {
         try {
@@ -1001,10 +998,7 @@ exports.tryHandle = async (from, rawText, deps) => {
       } else {
         await sendTextMessage(
           from,
-          flowMsg.buildUpiPaymentShort({
-            upiId: upi?.upiId,
-            amount: finalTotal,
-          })
+          flowMsg.buildUpiPaymentShort({ amount: finalTotal })
         );
       }
       return true;
