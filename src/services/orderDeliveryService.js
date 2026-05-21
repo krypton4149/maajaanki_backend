@@ -2,7 +2,9 @@ const { getSupabase } = require("../lib/supabaseClient");
 const { sendTextMessage } = require("./whatsappService");
 const orderFlowMessages = require("./orderFlowMessages");
 const orderDashboard = require("./orderDashboardService");
-const { formatPhoneForWhatsApp } = require("./orderConfirmationService");
+const {
+  resolveNotificationRecipients,
+} = require("../utils/whatsAppRecipients");
 
 function parseOrderNumInput(value) {
   if (value == null || value === "") return null;
@@ -30,9 +32,43 @@ async function readDeliverySentFlag(orderId) {
   return data?.out_for_delivery_whatsapp_sent === true;
 }
 
+async function clearDeliverySentFlag(orderId) {
+  const supabase = getSupabase();
+  if (!supabase) return;
+  await supabase
+    .from("orders")
+    .update({ out_for_delivery_whatsapp_sent: false })
+    .eq("id", orderId);
+}
+
+async function sendDeliveryWhatsApp(order, message) {
+  const recipients = resolveNotificationRecipients(order);
+  if (!recipients.length) {
+    return { ok: false, reason: "invalid_phone", order };
+  }
+
+  const attempts = [];
+  for (const { to, kind } of recipients) {
+    try {
+      await sendTextMessage(to, message);
+      return { ok: true, sentTo: to, recipientKind: kind, attempts };
+    } catch (err) {
+      attempts.push({ to, kind, error: err?.message });
+      console.warn("sendOutForDelivery try failed", order.id, to, err?.message);
+    }
+  }
+
+  return {
+    ok: false,
+    reason: "whatsapp_send_failed",
+    detail: attempts.map((a) => `${a.to}: ${a.error}`).join("; "),
+    order,
+    attempts,
+  };
+}
+
 /**
  * Send out-for-delivery WhatsApp and sync order status in Supabase.
- * Safe when dashboard already set order_status = out_for_delivery (uses sent flag).
  */
 async function sendOutForDeliveryIfNeeded({ orderId, orderNum, orderRef, force = false }) {
   const parsedNum =
@@ -54,7 +90,9 @@ async function sendOutForDeliveryIfNeeded({ orderId, orderNum, orderRef, force =
     return { ok: false, reason: "order_not_found" };
   }
 
-  if (!force) {
+  if (force) {
+    await clearDeliverySentFlag(order.id);
+  } else {
     const alreadySent =
       order.outForDeliveryWhatsappSent === true ||
       (await readDeliverySentFlag(order.id));
@@ -68,25 +106,13 @@ async function sendOutForDeliveryIfNeeded({ orderId, orderNum, orderRef, force =
     }
   }
 
-  const to = formatPhoneForWhatsApp(order.phone, order.whatsapp);
-  if (!to || to.length < 10) {
-    return { ok: false, reason: "invalid_phone", order };
-  }
-
   const message = orderFlowMessages.buildOutForDelivery({
     orderId: order.orderId || orderFlowMessages.formatOrderId(order.orderNum),
   });
 
-  try {
-    await sendTextMessage(to, message);
-  } catch (err) {
-    console.error("sendOutForDelivery WhatsApp failed", order.id, err?.message);
-    return {
-      ok: false,
-      reason: "whatsapp_send_failed",
-      detail: err?.message,
-      order,
-    };
+  const sendResult = await sendDeliveryWhatsApp(order, message);
+  if (!sendResult.ok) {
+    return sendResult;
   }
 
   const supabase = getSupabase();
@@ -114,6 +140,7 @@ async function sendOutForDeliveryIfNeeded({ orderId, orderNum, orderRef, force =
       return {
         ok: true,
         whatsappSent: true,
+        sentTo: sendResult.sentTo,
         order,
         warning:
           "WhatsApp sent but DB columns missing — run migrations 009 and 010.",
@@ -124,10 +151,15 @@ async function sendOutForDeliveryIfNeeded({ orderId, orderNum, orderRef, force =
   }
 
   const full = await orderDashboard.getOrderByIdOrNum({ orderId: order.id });
-  return { ok: true, whatsappSent: true, order: full };
+  return {
+    ok: true,
+    whatsappSent: true,
+    sentTo: sendResult.sentTo,
+    recipientKind: sendResult.recipientKind,
+    order: full,
+  };
 }
 
-/** @deprecated alias */
 async function markOutForDelivery(opts) {
   return sendOutForDeliveryIfNeeded(opts);
 }
@@ -136,4 +168,5 @@ module.exports = {
   sendOutForDeliveryIfNeeded,
   markOutForDelivery,
   parseOrderNumInput,
+  sendDeliveryWhatsApp,
 };

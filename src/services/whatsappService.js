@@ -168,15 +168,24 @@ exports.sendTextMessage = async (to, body) => {
       ? body.slice(0, WA_TEXT_MAX - 20) + "\n…(truncated)"
       : body;
 
-  await axios.post(
-    BASE_URL,
-    {
-      messaging_product: "whatsapp",
-      to,
-      text: { body: text },
-    },
-    { headers: authHeaders({ "Content-Type": "application/json" }) }
-  );
+  try {
+    const res = await axios.post(
+      BASE_URL,
+      {
+        messaging_product: "whatsapp",
+        to,
+        text: { body: text },
+      },
+      { headers: authHeaders({ "Content-Type": "application/json" }) }
+    );
+    return res.data;
+  } catch (err) {
+    const meta =
+      err?.response?.data?.error?.message ||
+      err?.response?.data?.error?.error_user_msg ||
+      err?.message;
+    throw new Error(meta || "WhatsApp send failed");
+  }
 };
 
 exports.sendInteractiveListMenu = async (to, rows) => {

@@ -221,6 +221,7 @@ exports.markOutForDelivery = async (req, res) => {
       ok: true,
       message: "Order marked out for delivery. Customer notified on WhatsApp.",
       order: result.order,
+      sentTo: result.sentTo || null,
       warning: result.warning || null,
     });
   } catch (err) {

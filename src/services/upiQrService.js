@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const QR_FILENAME = "payment-qr.png";
-const QR_CACHE_BUST = "v=20260522";
+const QR_CACHE_BUST = "v=20260521b";
 
 const DEFAULT_QR_PATH = path.join(__dirname, "../../assets", QR_FILENAME);
 
