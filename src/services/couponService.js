@@ -16,6 +16,7 @@ const BUILTIN_COUPONS = {
 /** Old misspelling in migration v1 — still accept at checkout */
 const CODE_ALIASES = {
   MAJAAANKI20: "MAAJAANKI20",
+  MAAJANKI20: "MAAJAANKI20",
 };
 
 function resolveCouponCode(normalized) {

@@ -76,6 +76,17 @@ function buildCouponPrompt() {
   ].join("\n");
 }
 
+function buildInvalidCouponMessage() {
+  return [
+    "❌ Invalid coupon code.",
+    "",
+    "Enter a valid code (e.g. *maajaanki20*)",
+    "",
+    "Or type *CART* to go back to your cart.",
+    "From cart, press *2* for checkout.",
+  ].join("\n");
+}
+
 function buildCouponApplied({ label, saved, finalTotal }) {
   return [
     "✅ Coupon Applied",
@@ -308,6 +319,7 @@ module.exports = {
   buildCartSummary,
   buildCartMenu,
   buildCouponPrompt,
+  buildInvalidCouponMessage,
   buildCouponApplied,
   buildDetailsPrompt,
   buildPaymentMenu,

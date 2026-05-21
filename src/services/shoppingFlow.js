@@ -429,11 +429,18 @@ async function refreshCouponOnCart(s) {
   }
 }
 
+function formatCouponError(result) {
+  if (result?.message === "Invalid coupon code.") {
+    return flowMsg.buildInvalidCouponMessage();
+  }
+  return `${result.message}\n\nTry again or type *CART*.`;
+}
+
 async function applyCouponToSession(s, code) {
   const { subtotal } = computeCartTotals(s.cart, null);
   const result = await couponService.applyCoupon(code, subtotal);
   if (!result.valid) {
-    return { ok: false, message: result.message };
+    return { ok: false, message: formatCouponError(result) };
   }
   s.coupon = {
     code: result.code,
@@ -911,7 +918,7 @@ exports.tryHandle = async (from, rawText, deps) => {
     }
     const applied = await applyCouponToSession(s, code);
     if (!applied.ok) {
-      await sendTextMessage(from, `${applied.message}\n\nTry again or reply MENU.`);
+      await sendTextMessage(from, applied.message);
       return true;
     }
     s.phase = applied.phase;
