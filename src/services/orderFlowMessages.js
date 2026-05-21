@@ -290,7 +290,7 @@ function buildAddedToCart(added, totalsWithCoupon) {
   }
   parts.push(
     "",
-    "Type *MENU* to browse more items.",
+    "Type *MENU* to add more items.",
     "Type *CART* when ready to checkout."
   );
   return parts.join("\n");
