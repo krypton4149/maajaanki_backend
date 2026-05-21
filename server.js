@@ -12,7 +12,7 @@ app.use(
   "/assets",
   express.static(path.join(__dirname, "assets"), {
     setHeaders(res, filePath) {
-      if (/upi-qr/i.test(filePath)) {
+      if (/payment-qr|upi-qr/i.test(filePath)) {
         res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       }
     },
