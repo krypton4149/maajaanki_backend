@@ -3,11 +3,22 @@ const { sendTextMessage } = require("./whatsappService");
 const orderFlowMessages = require("./orderFlowMessages");
 const orderDashboard = require("./orderDashboardService");
 
+/**
+ * Customer notifications: use delivery phone from checkout, not the WhatsApp
+ * sender id (restaurant staff often order from the business number for testing).
+ */
 function formatPhoneForWhatsApp(phone, whatsapp) {
-  const digits = String(whatsapp || phone || "").replace(/\D/g, "");
-  if (digits.length === 10) return `91${digits}`;
-  if (digits.length >= 12) return digits.slice(-12);
-  return digits.length >= 10 ? digits : null;
+  const phoneDigits = String(phone || "").replace(/\D/g, "");
+  const last10 =
+    phoneDigits.length >= 10 ? phoneDigits.slice(-10) : "";
+  if (last10.length === 10) {
+    return `91${last10}`;
+  }
+
+  const waDigits = String(whatsapp || "").replace(/\D/g, "");
+  if (waDigits.length === 10) return `91${waDigits}`;
+  if (waDigits.length >= 12) return waDigits.slice(-12);
+  return waDigits.length >= 10 ? waDigits : null;
 }
 
 /**

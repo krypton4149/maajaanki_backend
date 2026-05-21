@@ -13,4 +13,5 @@
 -- - payment_verified → true: "Order Confirmed" WhatsApp (once per order)
 -- - order_status → out_for_delivery: "out for delivery" WhatsApp (once per order)
 --
--- Run migrations 009 and 010 for order_status + out_for_delivery_whatsapp_sent.
+-- Run migrations 009, 010, and 011 (pg_net trigger) for full auto-send.
+-- Or call POST /api/admin/orders/out-for-delivery from the dashboard tick.
