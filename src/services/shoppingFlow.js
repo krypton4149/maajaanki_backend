@@ -910,10 +910,35 @@ exports.tryHandle = async (from, rawText, deps) => {
 
   // —— Enter coupon code ——
   if (s.phase === "coupon_enter") {
+    if (lower === "cart" || lower === "back" || lower === "cancel") {
+      s.phase = "cart_menu";
+      await sessionStore.set(from, s);
+      await showCartMenu(from, s, sendTextMessage);
+      return true;
+    }
+
+    if (isChoice2(text) || lower === "checkout" || lower === "skip") {
+      await goToCheckoutDetails(from, s, sendTextMessage);
+      return true;
+    }
+
+    if (lower === "menu" || lower.startsWith("menu")) {
+      s.phase = "cart_menu";
+      await sessionStore.set(from, s);
+      await showCartMenu(from, s, sendTextMessage);
+      return true;
+    }
+
     const couponCmd = parseCouponCommand(text);
     const code = couponCmd?.action === "apply" ? couponCmd.code : text;
     if (!code || code.length < 3) {
-      await sendTextMessage(from, "Please send a valid coupon code.\nExample: maajaanki20");
+      await sendTextMessage(
+        from,
+        [
+          "Send a coupon code (e.g. *maajaanki20*)",
+          "Or type *CART* to go back · *2* to checkout.",
+        ].join("\n")
+      );
       return true;
     }
     const applied = await applyCouponToSession(s, code);

@@ -72,7 +72,7 @@ function buildCouponPrompt() {
     "",
     "Or type: COUPON maajaanki20",
     "",
-    "Reply MENU to go back without applying.",
+    "Type *CART* to go back · *2* to checkout without coupon.",
   ].join("\n");
 }
 
