@@ -3,10 +3,15 @@
  * Row titles must stay ≤24 chars for WhatsApp list messages.
  */
 
+const { formatCategoryHeader } = require("../utils/menuMessageFormat");
+
 const line = (c = "─") => c.repeat(22);
 
-const header = (title) =>
-  `${line("═")}\n${title}\n${line("═")}`;
+const header = (title) => {
+  const plain = String(title).replace(/^🟢\s*/, "").replace(/\*/g, "").trim();
+  const name = plain.replace(/^[^\w]*\s*/, "").trim() || title;
+  return formatCategoryHeader(name).trimEnd();
+};
 
 const priced = (name, price) => `• ${name} — ${price}`;
 

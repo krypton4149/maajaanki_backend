@@ -1,6 +1,6 @@
 const { getSupabase, isSupabaseConfigured } = require("../lib/supabaseClient");
 
-const LINE = "─".repeat(22);
+const { formatCategoryHeader, formatSectionFooter } = require("../utils/menuMessageFormat");
 
 function truncate(str, max) {
   if (!str || str.length <= max) return str || "";
@@ -71,16 +71,12 @@ exports.getCategoryMenuText = async (categoryId) => {
 
   if (itemsErr || !items?.length) return null;
 
-  const title = cat?.name ? `🍽️ ${String(cat.name).toUpperCase()}` : "🍽️ MENU";
+  const title = cat?.name ? String(cat.name) : "Menu";
   const lines = [
-    `${"═".repeat(22)}`,
-    title,
-    `${"═".repeat(22)}`,
-    "",
+    formatCategoryHeader(title),
     ...items.map((it) => `• ${it.name} — ${formatPrice(it.price)}`),
     "",
-    LINE,
-    "Reply MENU for categories.",
+    formatSectionFooter("Reply MENU for categories."),
   ];
   return lines.join("\n");
 };

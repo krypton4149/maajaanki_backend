@@ -11,6 +11,7 @@ const shoppingFlow = require("../services/shoppingFlow");
 const { createOrder, isEnabled: isOrderDbEnabled } = require("../services/orderService");
 const { isUuid } = require("../utils/isUuid");
 const { getLineItems: getStaticLineItems } = require("../data/staticMenuCatalog");
+const { formatCategoryHeader } = require("../utils/menuMessageFormat");
 
 const MENU_KEYWORDS = new Set([
   "hi",
@@ -58,10 +59,7 @@ function buildNumberedCategoryMessage(title, catalogRows) {
     return [head];
   });
   return [
-    "═".repeat(22),
-    String(title).toUpperCase(),
-    "═".repeat(22),
-    "",
+    formatCategoryHeader(title),
     ...lines,
     "",
     shoppingFlow.formatNumberedCatalogFooter(),
