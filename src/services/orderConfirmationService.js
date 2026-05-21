@@ -21,9 +21,18 @@ function formatPhoneForWhatsApp(phone, whatsapp) {
   return waDigits.length >= 10 ? waDigits : null;
 }
 
+function isPastConfirmationStage(order) {
+  return (
+    order.orderStatus === "out_for_delivery" ||
+    order.outForDelivery === true ||
+    order.outForDeliveryWhatsappSent === true
+  );
+}
+
 /**
  * Send "Order Confirmed" WhatsApp if payment_verified and not sent yet.
  * Safe to call after Supabase manual verify or API verify.
+ * Skips (and marks sent) when order is already out for delivery — do not message after delivery notify.
  */
 async function sendOrderConfirmedIfNeeded({ orderId, orderNum, force = false }) {
   const order = await orderDashboard.getOrderByIdOrNum({ orderId, orderNum });
@@ -53,6 +62,16 @@ async function sendOrderConfirmedIfNeeded({ orderId, orderNum, force = false }) 
 
   if (!force && alreadySent) {
     return { sent: false, reason: "already_sent", order };
+  }
+
+  if (isPastConfirmationStage(order)) {
+    if (!alreadySent) {
+      await supabase
+        .from("orders")
+        .update({ confirmation_whatsapp_sent: true })
+        .eq("id", order.id);
+    }
+    return { sent: false, reason: "already_out_for_delivery", order };
   }
 
   const to = formatPhoneForWhatsApp(order.phone, order.whatsapp);
@@ -91,8 +110,10 @@ async function sendOrderConfirmedIfNeeded({ orderId, orderNum, force = false }) 
     payment_status: "paid",
     payment_verified: true,
     payment_verified_at: new Date().toISOString(),
-    order_status: "confirmed",
   };
+  if (!isPastConfirmationStage(order)) {
+    patch.order_status = "confirmed";
+  }
 
   const { error: updateErr } = await supabase
     .from("orders")

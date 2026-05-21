@@ -79,7 +79,13 @@ exports.onOrderUpdate = async (req, res) => {
     }
 
     const verified = record.payment_verified === true;
-    if (verified) {
+    const pastConfirmation =
+      status === "out_for_delivery" ||
+      outFlag ||
+      record.out_for_delivery_whatsapp_sent === true ||
+      response.outForDelivery?.whatsappSent === true;
+
+    if (verified && !pastConfirmation) {
       const wasVerified = oldRecord?.payment_verified === true;
       const alreadySent = record.confirmation_whatsapp_sent === true;
 
