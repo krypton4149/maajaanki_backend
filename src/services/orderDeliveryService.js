@@ -41,6 +41,41 @@ async function clearDeliverySentFlag(orderId) {
     .eq("id", orderId);
 }
 
+/** Keep dashboard columns in sync (legacy `out_for_delivery` + `status` + `order_status`). */
+function buildOutForDeliveryPatch(order, now) {
+  return {
+    order_status: "out_for_delivery",
+    out_for_delivery: true,
+    status: "out_for_delivery",
+    out_for_delivery_at: order.outForDeliveryAt || now,
+    out_for_delivery_whatsapp_sent: true,
+  };
+}
+
+async function syncOutForDeliveryColumns(orderId, order, { markSent = true } = {}) {
+  const supabase = getSupabase();
+  if (!supabase) return;
+
+  const now = new Date().toISOString();
+  const patch = buildOutForDeliveryPatch(order, now);
+  if (!markSent) {
+    delete patch.out_for_delivery_whatsapp_sent;
+  }
+
+  const { error } = await supabase.from("orders").update(patch).eq("id", orderId);
+
+  if (error && /order_status|out_for_delivery|status/i.test(error.message || "")) {
+    const minimal = {
+      out_for_delivery: true,
+      out_for_delivery_at: patch.out_for_delivery_at,
+    };
+    if (markSent) minimal.out_for_delivery_whatsapp_sent = true;
+    await supabase.from("orders").update(minimal).eq("id", orderId);
+  } else if (error) {
+    throw error;
+  }
+}
+
 async function sendDeliveryWhatsApp(order, message) {
   const recipients = resolveNotificationRecipients(order);
   if (!recipients.length) {
@@ -97,9 +132,11 @@ async function sendOutForDeliveryIfNeeded({ orderId, orderNum, orderRef, force =
       order.outForDeliveryWhatsappSent === true ||
       (await readDeliverySentFlag(order.id));
     if (alreadySent) {
+      await syncOutForDeliveryColumns(order.id, order);
+      const full = await orderDashboard.getOrderByIdOrNum({ orderId: order.id });
       return {
         ok: true,
-        order,
+        order: full,
         skipped: "already_sent",
         whatsappSent: false,
       };
@@ -107,7 +144,7 @@ async function sendOutForDeliveryIfNeeded({ orderId, orderNum, orderRef, force =
   }
 
   const message = orderFlowMessages.buildOutForDelivery({
-    orderId: order.orderId || orderFlowMessages.formatOrderId(order.orderNum),
+    orderId: orderFlowMessages.formatOrderId(order.orderNum),
   });
 
   const sendResult = await sendDeliveryWhatsApp(order, message);
@@ -120,34 +157,23 @@ async function sendOutForDeliveryIfNeeded({ orderId, orderNum, orderRef, force =
     return { ok: false, reason: "supabase_not_configured", order };
   }
 
-  const now = new Date().toISOString();
-  const patch = {
-    order_status: "out_for_delivery",
-    out_for_delivery_at: order.outForDeliveryAt || now,
-    out_for_delivery_whatsapp_sent: true,
-  };
-
-  const { error } = await supabase.from("orders").update(patch).eq("id", order.id);
-
-  if (error && /order_status|out_for_delivery/i.test(error.message || "")) {
-    const { error: flagErr } = await supabase
-      .from("orders")
-      .update({ out_for_delivery_whatsapp_sent: true })
-      .eq("id", order.id);
-
-    if (flagErr && /out_for_delivery_whatsapp_sent/i.test(flagErr.message || "")) {
-      console.error("sendOutForDelivery DB update", error.message);
+  try {
+    await syncOutForDeliveryColumns(order.id, order);
+  } catch (err) {
+    if (/out_for_delivery_whatsapp_sent|order_status|out_for_delivery/i.test(
+      err?.message || ""
+    )) {
+      console.error("sendOutForDelivery DB update", err.message);
       return {
         ok: true,
         whatsappSent: true,
         sentTo: sendResult.sentTo,
         order,
         warning:
-          "WhatsApp sent but DB columns missing — run migrations 009 and 010.",
+          "WhatsApp sent but DB columns missing — run migrations 009, 010, and 013.",
       };
     }
-  } else if (error) {
-    throw error;
+    throw err;
   }
 
   const full = await orderDashboard.getOrderByIdOrNum({ orderId: order.id });

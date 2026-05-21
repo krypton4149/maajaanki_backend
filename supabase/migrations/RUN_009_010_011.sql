@@ -24,5 +24,7 @@ alter table public.orders
 alter table public.orders
   add column if not exists out_for_delivery_whatsapp_sent boolean not null default false;
 
+-- 013 legacy boolean for admin UI (run 013_out_for_delivery_boolean.sql)
+
 -- 011 trigger: enable pg_net in Dashboard first, then run 012_fix_pgnet_trigger.sql
 -- (pg_net block moved to 012 — old "with schema extensions" install often fails silently)

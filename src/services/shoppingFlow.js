@@ -675,11 +675,6 @@ async function finalizeOrder(from, s, deps, options = {}) {
         discount,
       })
     );
-    try {
-      await sendTextMessage(from, flowMsg.buildOrderFeedbackRequest());
-    } catch (err) {
-      console.error("feedback message failed", err?.message);
-    }
   }
 
   await sessionStore.remove(from);

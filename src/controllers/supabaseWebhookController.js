@@ -53,10 +53,13 @@ exports.onOrderUpdate = async (req, res) => {
 
     const status = record.order_status;
     const oldStatus = oldRecord?.order_status;
+    const outFlag = record.out_for_delivery === true;
+    const wasOutFlag = oldRecord?.out_for_delivery === true;
     const becameOutForDelivery =
-      status === "out_for_delivery" && oldStatus !== "out_for_delivery";
+      (status === "out_for_delivery" && oldStatus !== "out_for_delivery") ||
+      (outFlag && !wasOutFlag);
     const needsDeliveryMsg =
-      status === "out_for_delivery" &&
+      (status === "out_for_delivery" || outFlag) &&
       record.out_for_delivery_whatsapp_sent !== true;
 
     if (becameOutForDelivery || needsDeliveryMsg) {

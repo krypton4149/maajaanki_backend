@@ -20,6 +20,7 @@ begin
   end if;
 
   if new.order_status is not distinct from old.order_status
+     and new.out_for_delivery is not distinct from old.out_for_delivery
      and new.payment_verified is not distinct from old.payment_verified then
     return new;
   end if;

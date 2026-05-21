@@ -15,19 +15,15 @@ function resolveNotificationRecipients(order) {
     recipients.push({ to, kind });
   };
 
-  const deliveryPhone = formatPhoneForWhatsApp(order.phone, null);
+  // Same priority as Order Confirmed: checkout phone first, then WhatsApp chat id.
+  const primary = formatPhoneForWhatsApp(order.phone, order.whatsapp);
+  if (primary) {
+    add(primary, "primary");
+  }
+
   const chatWa = formatPhoneForWhatsApp(null, order.whatsapp);
-
-  if (order.orderSource === "whatsapp" && chatWa) {
+  if (chatWa) {
     add(chatWa, "whatsapp_chat");
-  }
-
-  if (deliveryPhone) {
-    add(deliveryPhone, "delivery_phone");
-  }
-
-  if (!recipients.length && chatWa) {
-    add(chatWa, "fallback_whatsapp");
   }
 
   return recipients;

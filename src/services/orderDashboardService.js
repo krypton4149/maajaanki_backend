@@ -19,6 +19,7 @@ function mapOrderRow(row) {
     upiTransactionId: row.upi_transaction_id,
     paymentVerified: row.payment_verified,
     orderStatus: row.order_status || "confirmed",
+    outForDelivery: row.out_for_delivery === true,
     outForDeliveryAt: row.out_for_delivery_at || null,
     outForDeliveryWhatsappSent: row.out_for_delivery_whatsapp_sent === true,
     orderSource: row.order_source,
