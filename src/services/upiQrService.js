@@ -1,13 +1,22 @@
 const fs = require("fs");
 const path = require("path");
 
-const DEFAULT_QR_PATH = path.join(__dirname, "../../assets/upi-qr.png");
+const QR_FILENAME = "upi-qr-hdfc.png";
+const QR_CACHE_BUST = "v=20260521";
 
-function getQrLocalPath() {
+const DEFAULT_QR_PATH = path.join(__dirname, "../../assets", QR_FILENAME);
+const LEGACY_QR_PATH = path.join(__dirname, "../../assets/upi-qr.png");
+
+function resolveQrPath() {
   const custom = String(process.env.RESTAURANT_UPI_QR_PATH || "").trim();
   if (custom && fs.existsSync(custom)) return custom;
   if (fs.existsSync(DEFAULT_QR_PATH)) return DEFAULT_QR_PATH;
+  if (fs.existsSync(LEGACY_QR_PATH)) return LEGACY_QR_PATH;
   return null;
+}
+
+function getQrLocalPath() {
+  return resolveQrPath();
 }
 
 function getQrPublicUrl() {
@@ -17,8 +26,10 @@ function getQrPublicUrl() {
   const base =
     String(process.env.APP_PUBLIC_URL || "").trim() ||
     String(process.env.PUBLIC_BASE_URL || "").trim();
-  if (base && getQrLocalPath()) {
-    return `${base.replace(/\/$/, "")}/assets/upi-qr.png`;
+  const local = resolveQrPath();
+  if (base && local) {
+    const name = path.basename(local);
+    return `${base.replace(/\/$/, "")}/assets/${name}?${QR_CACHE_BUST}`;
   }
   return null;
 }

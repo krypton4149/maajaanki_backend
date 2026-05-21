@@ -2,6 +2,7 @@ const {
   buildUpiDeepLink,
   getAppBaseUrl,
 } = require("../services/payLinkService");
+const { getQrPublicUrl } = require("../services/upiQrService");
 
 exports.payPage = (req, res) => {
   const amount = Math.max(0, Math.round(Number(req.query.amount) || 0));
@@ -15,9 +16,7 @@ exports.payPage = (req, res) => {
   }
 
   const upiLink = buildUpiDeepLink(upiId, payeeName, amount);
-  const qrUrl = getAppBaseUrl()
-    ? `${getAppBaseUrl()}/assets/upi-qr.png`
-    : "";
+  const qrUrl = getQrPublicUrl() || "";
 
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(`<!DOCTYPE html>

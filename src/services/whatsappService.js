@@ -60,22 +60,26 @@ exports.sendImageMessage = async (to, { link, mediaId, caption }) => {
   );
 };
 
-/** Sends bundled UPI QR (public URL or upload from assets/upi-qr.png). */
+/** Sends UPI QR — uploads file first so WhatsApp does not reuse a cached old URL. */
 exports.sendUpiQrImage = async (to, caption) => {
+  const localPath = getQrLocalPath();
+  if (localPath) {
+    try {
+      const mediaId = await uploadImageFile(localPath);
+      await exports.sendImageMessage(to, { mediaId, caption });
+      return { sent: true, via: "upload" };
+    } catch (err) {
+      console.error("sendUpiQrImage upload failed", err?.message);
+    }
+  }
+
   const publicUrl = getQrPublicUrl();
   if (publicUrl) {
     await exports.sendImageMessage(to, { link: publicUrl, caption });
     return { sent: true, via: "link" };
   }
 
-  const localPath = getQrLocalPath();
-  if (!localPath) {
-    return { sent: false, reason: "qr_not_configured" };
-  }
-
-  const mediaId = await uploadImageFile(localPath);
-  await exports.sendImageMessage(to, { mediaId, caption });
-  return { sent: true, via: "upload" };
+  return { sent: false, reason: "qr_not_configured" };
 };
 
 /** Tappable Pay Now button (HTTPS only — works in WhatsApp). */

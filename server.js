@@ -8,7 +8,16 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
-app.use("/assets", express.static(path.join(__dirname, "assets")));
+app.use(
+  "/assets",
+  express.static(path.join(__dirname, "assets"), {
+    setHeaders(res, filePath) {
+      if (/upi-qr/i.test(filePath)) {
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      }
+    },
+  })
+);
 app.use(express.static(path.join(__dirname, "public")));
 
 const webhookRoutes = require("./src/routes/webhookRoutes");
