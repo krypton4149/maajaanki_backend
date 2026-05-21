@@ -3,7 +3,7 @@ const checkoutService = require("./checkoutService");
 const flowMsg = require("./orderFlowMessages");
 const paymentVerification = require("./paymentVerificationService");
 
-const sessions = new Map();
+const sessionStore = require("./whatsappSessionStore");
 
 function computeCartTotals(cart, appliedCoupon) {
   return flowMsg.computeTotals(cart, appliedCoupon);
@@ -37,22 +37,22 @@ function isDoneOnly(text) {
   return /^(done|paid)$/i.test(String(text || "").trim());
 }
 
-exports.clearSession = (from) => {
-  sessions.delete(from);
+exports.clearSession = async (from) => {
+  await sessionStore.remove(from);
 };
 
-exports.onMenuOpened = (from) => {
-  const s = sessions.get(from);
+exports.onMenuOpened = async (from) => {
+  const s = await sessionStore.get(from);
   if (!s) return;
 
   const phase = s.phase || "shop";
   if (phase === "shop" && (!s.cart || s.cart.length === 0)) {
-    sessions.delete(from);
+    await sessionStore.remove(from);
     return;
   }
 
   if (phase !== "shop") {
-    sessions.set(from, {
+    await sessionStore.set(from, {
       phase: "shop",
       categoryLabel: s.categoryLabel || "",
       catalog: Array.isArray(s.catalog) ? s.catalog : [],
@@ -64,14 +64,14 @@ exports.onMenuOpened = (from) => {
 
   if (s.pendingPick) {
     delete s.pendingPick;
-    sessions.set(from, s);
+    await sessionStore.set(from, s);
   }
 };
 
-exports.hasSession = (from) => sessions.has(from);
+exports.hasSession = async (from) => sessionStore.has(from);
 
-exports.startShopping = (from, { categoryLabel, catalog }) => {
-  const existing = sessions.get(from);
+exports.startShopping = async (from, { categoryLabel, catalog }) => {
+  const existing = await sessionStore.get(from);
   const keepCart =
     existing && Array.isArray(existing.cart) && existing.cart.length > 0
       ? existing.cart.map((c) => ({ ...c }))
@@ -83,7 +83,7 @@ exports.startShopping = (from, { categoryLabel, catalog }) => {
     priceRupees: row.priceRupees,
   }));
 
-  sessions.set(from, {
+  await sessionStore.set(from, {
     phase: "shop",
     categoryLabel,
     catalog: numbered,
@@ -169,7 +169,7 @@ function rowsToCartLines(rows, qty = 1) {
 async function addLinesToCart(from, s, added, deps, errors = []) {
   s.cart.push(...added);
   await refreshCouponOnCart(s);
-  sessions.set(from, s);
+  await sessionStore.set(from, s);
   const totals = s.coupon ? computeCartTotals(s.cart, s.coupon) : null;
   await deps.sendTextMessage(
     from,
@@ -226,7 +226,7 @@ async function finishEachItemPick(from, s, deps) {
   s.phase = "shop";
   delete s.pendingPick;
   await refreshCouponOnCart(s);
-  sessions.set(from, s);
+  await sessionStore.set(from, s);
 
   const totals = s.coupon ? computeCartTotals(s.cart, s.coupon) : null;
   await deps.sendTextMessage(
@@ -255,13 +255,13 @@ async function applyQuantityForCurrentItem(from, s, qty, deps) {
     }
 
     p.qty = 1;
-    sessions.set(from, s);
+    await sessionStore.set(from, s);
     await promptQuantityPicker(from, s, deps);
     return true;
   }
 
   p.qty = q;
-  sessions.set(from, s);
+  await sessionStore.set(from, s);
   return confirmPendingPick(from, s, deps);
 }
 
@@ -269,7 +269,7 @@ async function promptQuantityPicker(from, s, deps) {
   const p = s.pendingPick;
   const items = pendingPickItems(p);
   if (!items.length) return;
-  sessions.set(from, s);
+  await sessionStore.set(from, s);
 
   const eachMode = isEachItemQtyMode(p);
   const idx = eachMode ? p.currentIndex || 0 : 0;
@@ -329,7 +329,7 @@ async function confirmPendingPick(from, s, deps) {
   s.phase = "shop";
   delete s.pendingPick;
   await refreshCouponOnCart(s);
-  sessions.set(from, s);
+  await sessionStore.set(from, s);
 
   const totals = s.coupon ? computeCartTotals(s.cart, s.coupon) : null;
   await deps.sendTextMessage(
@@ -505,7 +505,7 @@ async function showCartMenu(from, s, sendTextMessage) {
     return;
   }
   s.phase = "cart_menu";
-  sessions.set(from, s);
+  await sessionStore.set(from, s);
   await sendTextMessage(from, flowMsg.buildCartMenu(s.cart, s.coupon));
 }
 
@@ -521,7 +521,7 @@ async function goToCheckoutDetails(from, s, sendTextMessage) {
     );
     if (!refreshed.valid) {
       s.coupon = null;
-      sessions.set(from, s);
+      await sessionStore.set(from, s);
       await sendTextMessage(
         from,
         `${refreshed.message}\n\nCoupon removed. Type CART to review.`
@@ -537,13 +537,13 @@ async function goToCheckoutDetails(from, s, sendTextMessage) {
     };
   }
   s.phase = "checkout_details";
-  sessions.set(from, s);
+  await sessionStore.set(from, s);
   await sendTextMessage(from, flowMsg.buildDetailsPrompt());
 }
 
 async function goToPaymentSelect(from, s, sendTextMessage) {
   s.phase = "payment_select";
-  sessions.set(from, s);
+  await sessionStore.set(from, s);
   await sendTextMessage(from, flowMsg.buildPaymentMenu());
 }
 
@@ -656,7 +656,7 @@ async function finalizeOrder(from, s, deps, options = {}) {
     }
   }
 
-  sessions.delete(from);
+  await sessionStore.remove(from);
 }
 
 /**
@@ -669,12 +669,12 @@ async function submitUpiProof(from, s, proof, deps) {
   }
   s.paymentProof = { utr: proof.utr };
   s.paymentMethod = "upi";
-  sessions.set(from, s);
+  await sessionStore.set(from, s);
   await finalizeOrder(from, s, deps, { pendingVerification: true });
 }
 
 exports.tryHandleQuantityButton = async (from, buttonId, deps) => {
-  const s = sessions.get(from);
+  const s = await sessionStore.get(from);
   if (!s || s.phase !== "pick_qty" || !s.pendingPick) return false;
 
   if (String(buttonId || "").trim() === "qty_add") {
@@ -686,7 +686,7 @@ exports.tryHandleQuantityButton = async (from, buttonId, deps) => {
 
 exports.tryHandlePaymentProof = async (from, message, deps) => {
   const { sendTextMessage } = deps;
-  const s = sessions.get(from);
+  const s = await sessionStore.get(from);
   if (!s || s.phase !== "upi_await_proof") return false;
 
   if (message.type === "image") {
@@ -713,15 +713,15 @@ exports.tryHandle = async (from, rawText, deps) => {
   const lower = text.toLowerCase();
 
   if (lower === "cancel") {
-    if (sessions.has(from)) {
-      sessions.delete(from);
+    if (await sessionStore.has(from)) {
+      await sessionStore.remove(from);
       await sendTextMessage(from, "Order cancelled.\n\nType MENU to start again.");
       return true;
     }
     return false;
   }
 
-  const s = sessions.get(from);
+  const s = await sessionStore.get(from);
   if (!s) return false;
 
   // —— Shopping: add items ——
@@ -731,13 +731,13 @@ exports.tryHandle = async (from, rawText, deps) => {
       await sendTextMessage(from, flowMsg.buildCouponPrompt());
       if (s.cart.length) {
         s.phase = "coupon_enter";
-        sessions.set(from, s);
+        await sessionStore.set(from, s);
       }
       return true;
     }
     if (couponCmd?.action === "remove") {
       s.coupon = null;
-      sessions.set(from, s);
+      await sessionStore.set(from, s);
       await sendTextMessage(from, "Coupon removed from your cart.");
       return true;
     }
@@ -748,7 +748,7 @@ exports.tryHandle = async (from, rawText, deps) => {
         return true;
       }
       s.phase = applied.phase;
-      sessions.set(from, s);
+      await sessionStore.set(from, s);
       await sendTextMessage(from, applied.message);
       return true;
     }
@@ -770,7 +770,7 @@ exports.tryHandle = async (from, rawText, deps) => {
     const multi = parseMultipleItemNumbers(text, s.catalog);
     if (multi.rows.length >= 2) {
       startPickQuantity(s, multi.rows);
-      sessions.set(from, s);
+      await sessionStore.set(from, s);
       if (multi.errors.length) {
         await sendTextMessage(
           from,
@@ -784,7 +784,7 @@ exports.tryHandle = async (from, rawText, deps) => {
     const itemRow = parseItemNumber(text, s.catalog);
     if (itemRow) {
       startPickQuantity(s, itemRow);
-      sessions.set(from, s);
+      await sessionStore.set(from, s);
       await promptQuantityPicker(from, s, deps);
       return true;
     }
@@ -793,7 +793,7 @@ exports.tryHandle = async (from, rawText, deps) => {
     if (added.length) {
       s.cart.push(...added);
       await refreshCouponOnCart(s);
-      sessions.set(from, s);
+      await sessionStore.set(from, s);
       const totals = s.coupon ? computeCartTotals(s.cart, s.coupon) : null;
       await sendTextMessage(
         from,
@@ -832,7 +832,7 @@ exports.tryHandle = async (from, rawText, deps) => {
     if (/^cancel$/i.test(text)) {
       s.phase = "shop";
       delete s.pendingPick;
-      sessions.set(from, s);
+      await sessionStore.set(from, s);
       await sendTextMessage(
         from,
         "Cancelled.\n\nType an *item number* to add, or *MENU* / *CART*."
@@ -852,7 +852,7 @@ exports.tryHandle = async (from, rawText, deps) => {
         return true;
       }
       s.pendingPick.qty = qtyTyped;
-      sessions.set(from, s);
+      await sessionStore.set(from, s);
       await promptQuantityPicker(from, s, deps);
       return true;
     }
@@ -870,7 +870,7 @@ exports.tryHandle = async (from, rawText, deps) => {
   if (s.phase === "cart_menu") {
     if (isChoice1(text)) {
       s.phase = "coupon_enter";
-      sessions.set(from, s);
+      await sessionStore.set(from, s);
       await sendTextMessage(from, flowMsg.buildCouponPrompt());
       return true;
     }
@@ -886,7 +886,7 @@ exports.tryHandle = async (from, rawText, deps) => {
         return true;
       }
       s.phase = applied.phase;
-      sessions.set(from, s);
+      await sessionStore.set(from, s);
       await sendTextMessage(from, applied.message);
       return true;
     }
@@ -915,7 +915,7 @@ exports.tryHandle = async (from, rawText, deps) => {
       return true;
     }
     s.phase = applied.phase;
-    sessions.set(from, s);
+    await sessionStore.set(from, s);
     await sendTextMessage(from, applied.message);
     return true;
   }
@@ -928,7 +928,7 @@ exports.tryHandle = async (from, rawText, deps) => {
     }
     if (lower === "cart") {
       s.phase = "cart_menu";
-      sessions.set(from, s);
+      await sessionStore.set(from, s);
       await sendTextMessage(from, flowMsg.buildCartMenu(s.cart, s.coupon));
       return true;
     }
@@ -952,7 +952,7 @@ exports.tryHandle = async (from, rawText, deps) => {
       address: parsed.address,
       phone: parsed.phone,
     };
-    sessions.set(from, s);
+    await sessionStore.set(from, s);
     await goToPaymentSelect(from, s, sendTextMessage);
     return true;
   }
@@ -964,7 +964,7 @@ exports.tryHandle = async (from, rawText, deps) => {
 
     if (isPaymentCod(text)) {
       s.paymentMethod = "cod";
-      sessions.set(from, s);
+      await sessionStore.set(from, s);
       await sendTextMessage(from, flowMsg.buildCodSelected());
       try {
         await finalizeOrder(from, s, { sendTextMessage, createOrder, waFrom, isOrderEnabled });
@@ -981,7 +981,7 @@ exports.tryHandle = async (from, rawText, deps) => {
     if (isPaymentUpi(text) && config.upiEnabled) {
       s.paymentMethod = "upi";
       s.phase = "upi_await_proof";
-      sessions.set(from, s);
+      await sessionStore.set(from, s);
       const upi = config.methods.find((m) => m.id === "upi");
       const caption = flowMsg.buildUpiQrCaption({ amount: finalTotal });
       let sent = false;

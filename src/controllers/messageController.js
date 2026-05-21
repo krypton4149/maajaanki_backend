@@ -108,7 +108,7 @@ exports.handleIncomingMessage = async (message) => {
           listId.trim()
         );
         if (pack?.items?.length) {
-          shoppingFlow.startShopping(from, {
+          await shoppingFlow.startShopping(from, {
             categoryLabel: pack.categoryLabel,
             catalog: pack.items,
           });
@@ -127,7 +127,7 @@ exports.handleIncomingMessage = async (message) => {
       if (staticRows?.length) {
         const sec = getSectionById(listId);
         const label = sec?.listTitle || listId;
-        shoppingFlow.startShopping(from, {
+        await shoppingFlow.startShopping(from, {
           categoryLabel: label,
           catalog: staticRows,
         });
@@ -151,7 +151,7 @@ exports.handleIncomingMessage = async (message) => {
   const text = message.text?.body;
 
   if (wantsMenu(text)) {
-    shoppingFlow.onMenuOpened(from);
+    await shoppingFlow.onMenuOpened(from);
     const rows = await resolveMenuListRows();
     return sendInteractiveListMenu(from, rows);
   }
@@ -163,6 +163,19 @@ exports.handleIncomingMessage = async (message) => {
   );
   if (shoppingHandled) {
     return;
+  }
+
+  const looksLikeItemPick = /^[\d\s]+$/.test(String(text || "").trim());
+  if (looksLikeItemPick) {
+    return sendTextMessage(
+      from,
+      [
+        "Open the menu first 🙏",
+        "",
+        "Type *MENU* → tap a category from the list",
+        "Then type item numbers (e.g. *2 3 5*).",
+      ].join("\n")
+    );
   }
 
   return sendTextMessage(
