@@ -276,6 +276,18 @@ function buildQuantityPickerText({ items, qty, step }) {
   return lines.join("\n");
 }
 
+function buildOutForDelivery({ orderId }) {
+  return [
+    "🛵 Your order is now out for delivery!",
+    "",
+    `Order ID: ${orderId}`,
+    "",
+    "Our delivery partner is on the way.",
+    "",
+    "Thank you — Maa Jaanki Restaurant 🙏",
+  ].join("\n");
+}
+
 function buildOrderFeedbackRequest() {
   return [
     "💬 *We would love your feedback*",
@@ -333,6 +345,7 @@ module.exports = {
   buildOrderConfirmed,
   buildCatalogFooter,
   buildQuantityPickerText,
+  buildOutForDelivery,
   buildOrderFeedbackRequest,
   buildAddedToCart,
   buildWelcomeHint,

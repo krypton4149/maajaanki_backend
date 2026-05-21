@@ -18,6 +18,8 @@ function mapOrderRow(row) {
     paymentStatus: row.payment_status,
     upiTransactionId: row.upi_transaction_id,
     paymentVerified: row.payment_verified,
+    orderStatus: row.order_status || "confirmed",
+    outForDeliveryAt: row.out_for_delivery_at || null,
     orderSource: row.order_source,
     lineItemsNote: row.line_items_note,
     createdAt: row.created_at || null,

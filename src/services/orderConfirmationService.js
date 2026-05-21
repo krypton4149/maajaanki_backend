@@ -81,6 +81,7 @@ async function sendOrderConfirmedIfNeeded({ orderId, orderNum, force = false }) 
     payment_status: "paid",
     payment_verified: true,
     payment_verified_at: new Date().toISOString(),
+    order_status: "confirmed",
   };
 
   const { error: updateErr } = await supabase

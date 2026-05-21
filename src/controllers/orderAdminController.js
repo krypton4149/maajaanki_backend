@@ -5,6 +5,7 @@ const {
   sendOrderConfirmedIfNeeded,
 } = require("../services/orderConfirmationService");
 const { getSupabase } = require("../lib/supabaseClient");
+const orderDelivery = require("../services/orderDeliveryService");
 
 function checkAdminKey(req) {
   const key =
@@ -163,6 +164,68 @@ exports.sendConfirmation = async (req, res) => {
   } catch (err) {
     console.error("sendConfirmation", err?.message);
     return res.status(500).json({ ok: false, message: "Send failed." });
+  }
+};
+
+/**
+ * POST /api/admin/orders/out-for-delivery
+ * Tick on admin dashboard: status → out_for_delivery + WhatsApp to customer.
+ * Body: { orderId } | { orderNum: 1036 } | { orderRef: "MJ-1036" }
+ */
+exports.markOutForDelivery = async (req, res) => {
+  try {
+    if (!checkAdminKey(req)) {
+      return res.status(403).json({ ok: false, message: "Unauthorized." });
+    }
+
+    const orderId = req.body?.orderId;
+    const orderNum = req.body?.orderNum;
+    const orderRef = req.body?.orderRef || req.body?.order_id;
+
+    if (!orderId && orderNum == null && !orderRef) {
+      return res.status(400).json({
+        ok: false,
+        message: "Send orderId, orderNum, or orderRef (e.g. MJ-1036).",
+      });
+    }
+
+    const result = await orderDelivery.markOutForDelivery({
+      orderId,
+      orderNum,
+      orderRef,
+      force: !!req.body?.resend,
+    });
+
+    if (!result.ok) {
+      const msg =
+        result.reason === "order_not_found"
+          ? "Order not found."
+          : result.reason === "invalid_phone"
+            ? "Customer phone missing on this order."
+            : result.reason === "whatsapp_send_failed"
+              ? `WhatsApp failed: ${result.detail || "error"}`
+              : "Could not update order.";
+
+      return res.status(400).json({ ok: false, message: msg, result });
+    }
+
+    if (result.skipped === "already_out_for_delivery") {
+      return res.json({
+        ok: true,
+        message: "Already out for delivery.",
+        order: result.order,
+      });
+    }
+
+    return res.json({
+      ok: true,
+      message: "Order marked out for delivery. Customer notified on WhatsApp.",
+      order: result.order,
+      warning: result.warning || null,
+    });
+  } catch (err) {
+    console.error("markOutForDelivery", err?.message);
+    return res.status(500).json({ ok: false, message: "Update failed." });
   }
 };
 

@@ -82,6 +82,7 @@ async function verifyOrderPayment(orderId) {
       payment_verified: true,
       payment_verified_at: new Date().toISOString(),
       payment_status: "paid",
+      order_status: "confirmed",
     })
     .eq("id", orderId)
     .select("id, order_num, whatsapp, phone, customer_name, total, coupon_code, discount_amount")
