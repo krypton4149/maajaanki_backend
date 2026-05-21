@@ -1,13 +1,13 @@
 const DIVIDER = "─".repeat(22);
 
 /**
- * WhatsApp supports *bold* but not font colors — 🟢 marks category headers.
+ * WhatsApp supports *bold* but not font colors — 🍽️ on category headers.
  */
 function formatCategoryHeader(title) {
   const name = String(title || "Menu")
     .trim()
     .toUpperCase();
-  return [DIVIDER, `🟢 *${name}*`, DIVIDER, ""].join("\n");
+  return [DIVIDER, `🍽️ *${name}*`, DIVIDER, ""].join("\n");
 }
 
 function formatSectionFooter(hint) {

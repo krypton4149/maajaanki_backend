@@ -436,7 +436,26 @@ function formatCouponError(result) {
   return `${result.message}\n\nTry again or type *CART*.`;
 }
 
+const RESERVED_COUPON_WORDS = new Set([
+  "CART",
+  "MENU",
+  "CHECKOUT",
+  "ORDER",
+  "ADD",
+  "CANCEL",
+  "1",
+  "2",
+]);
+
 async function applyCouponToSession(s, code) {
+  const normalized = couponService.normalizeCode(code);
+  if (RESERVED_COUPON_WORDS.has(normalized)) {
+    return {
+      ok: false,
+      message: flowMsg.buildInvalidCouponMessage(),
+    };
+  }
+
   const { subtotal } = computeCartTotals(s.cart, null);
   const result = await couponService.applyCoupon(code, subtotal);
   if (!result.valid) {

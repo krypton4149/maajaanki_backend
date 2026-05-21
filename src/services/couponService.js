@@ -13,17 +13,6 @@ const BUILTIN_COUPONS = {
   },
 };
 
-/** Old misspelling in migration v1 — still accept at checkout */
-const CODE_ALIASES = {
-  MAJAAANKI20: "MAAJAANKI20",
-  MAAJANKI20: "MAAJAANKI20",
-  MAAJAANK20: "MAAJAANKI20",
-};
-
-function resolveCouponCode(normalized) {
-  return CODE_ALIASES[normalized] || normalized;
-}
-
 function normalizeCode(code) {
   return String(code || "")
     .trim()
@@ -99,31 +88,24 @@ async function applyCoupon(code, subtotal) {
     return { valid: false, message: "Please enter a coupon code." };
   }
 
-  const lookupCode = resolveCouponCode(normalized);
   const supabase = getSupabase();
   let coupon = null;
   if (supabase) {
-    const codesToTry = [...new Set([lookupCode, normalized])];
-    for (const code of codesToTry) {
-      const { data, error } = await supabase
-        .from("coupons")
-        .select("*")
-        .eq("code", code)
-        .maybeSingle();
+    const { data, error } = await supabase
+      .from("coupons")
+      .select("*")
+      .eq("code", normalized)
+      .maybeSingle();
 
-      if (error) {
-        console.error("coupon lookup failed", error.message, error.code);
-        break;
-      }
-      if (data) {
-        coupon = data;
-        break;
-      }
+    if (error) {
+      console.error("coupon lookup failed", error.message, error.code);
+    } else if (data) {
+      coupon = data;
     }
   }
 
-  if (!coupon && BUILTIN_COUPONS[lookupCode]) {
-    coupon = { ...BUILTIN_COUPONS[lookupCode] };
+  if (!coupon && BUILTIN_COUPONS[normalized]) {
+    coupon = { ...BUILTIN_COUPONS[normalized] };
   }
 
   const check = validateCouponRow(coupon, subtotal);
@@ -134,7 +116,7 @@ async function applyCoupon(code, subtotal) {
 
   return {
     valid: true,
-    code: lookupCode,
+    code: normalized,
     label: discountLabel(coupon),
     discount,
     subtotal: roundRupees(subtotal),

@@ -8,7 +8,7 @@ const { formatCategoryHeader } = require("../utils/menuMessageFormat");
 const line = (c = "─") => c.repeat(22);
 
 const header = (title) => {
-  const plain = String(title).replace(/^🟢\s*/, "").replace(/\*/g, "").trim();
+  const plain = String(title).replace(/^[🍽️🟢]\s*/, "").replace(/\*/g, "").trim();
   const name = plain.replace(/^[^\w]*\s*/, "").trim() || title;
   return formatCategoryHeader(name).trimEnd();
 };
