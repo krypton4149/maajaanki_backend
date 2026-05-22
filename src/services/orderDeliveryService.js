@@ -3,7 +3,7 @@ const { sendTextMessage } = require("./whatsappService");
 const orderFlowMessages = require("./orderFlowMessages");
 const orderDashboard = require("./orderDashboardService");
 const {
-  resolveNotificationRecipients,
+  resolveOutForDeliveryRecipients,
 } = require("../utils/whatsAppRecipients");
 
 function parseOrderNumInput(value) {
@@ -77,7 +77,7 @@ async function syncOutForDeliveryColumns(orderId, order, { markSent = true } = {
 }
 
 async function sendDeliveryWhatsApp(order, message) {
-  const recipients = resolveNotificationRecipients(order);
+  const recipients = resolveOutForDeliveryRecipients(order);
   if (!recipients.length) {
     return { ok: false, reason: "invalid_phone", order };
   }

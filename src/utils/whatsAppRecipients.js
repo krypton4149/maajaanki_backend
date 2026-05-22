@@ -1,9 +1,35 @@
 const { formatPhoneForWhatsApp } = require("../services/orderConfirmationService");
 
 /**
- * Who should receive outbound WhatsApp (order updates, out for delivery).
- * - WhatsApp orders: person who chatted (active 24h window).
- * - Delivery phone: contact from checkout (may differ for gift orders).
+ * Out-for-delivery: notify the WhatsApp number used to place the order,
+ * not the delivery contact phone (may be someone else at the address).
+ */
+function resolveOutForDeliveryRecipients(order) {
+  const seen = new Set();
+  const recipients = [];
+
+  const add = (to, kind) => {
+    if (!to || to.length < 10 || seen.has(to)) return;
+    seen.add(to);
+    recipients.push({ to, kind });
+  };
+
+  const chatWa = formatPhoneForWhatsApp(null, order.whatsapp);
+  if (chatWa) {
+    add(chatWa, "whatsapp_chat");
+  }
+
+  // Website / phone-only orders when no WhatsApp id on the row
+  const deliveryPhone = formatPhoneForWhatsApp(order.phone, null);
+  if (deliveryPhone) {
+    add(deliveryPhone, "delivery_phone_fallback");
+  }
+
+  return recipients;
+}
+
+/**
+ * General notifications (legacy) — delivery contact first.
  */
 function resolveNotificationRecipients(order) {
   const seen = new Set();
@@ -15,7 +41,6 @@ function resolveNotificationRecipients(order) {
     recipients.push({ to, kind });
   };
 
-  // Same priority as Order Confirmed: checkout phone first, then WhatsApp chat id.
   const primary = formatPhoneForWhatsApp(order.phone, order.whatsapp);
   if (primary) {
     add(primary, "primary");
@@ -29,4 +54,7 @@ function resolveNotificationRecipients(order) {
   return recipients;
 }
 
-module.exports = { resolveNotificationRecipients };
+module.exports = {
+  resolveOutForDeliveryRecipients,
+  resolveNotificationRecipients,
+};
