@@ -85,23 +85,18 @@ exports.onOrderUpdate = async (req, res) => {
       record.out_for_delivery_whatsapp_sent === true ||
       response.outForDelivery?.whatsappSent === true;
 
-    if (verified && !pastConfirmation) {
-      const wasVerified = oldRecord?.payment_verified === true;
-      const alreadySent = record.confirmation_whatsapp_sent === true;
-
-      if (!(wasVerified && alreadySent)) {
-        const whatsapp = await sendOrderConfirmedIfNeeded({
-          orderId: record.id,
-          force: false,
-        });
-        response.whatsappConfirmation = whatsapp;
-        if (!whatsapp.sent) {
-          console.warn(
-            "supabase webhook: confirmation not sent",
-            record.id,
-            whatsapp.reason
-          );
-        }
+    if (verified && !pastConfirmation && record.confirmation_whatsapp_sent !== true) {
+      const whatsapp = await sendOrderConfirmedIfNeeded({
+        orderId: record.id,
+        force: false,
+      });
+      response.whatsappConfirmation = whatsapp;
+      if (!whatsapp.sent && whatsapp.reason !== "already_sent") {
+        console.warn(
+          "supabase webhook: confirmation not sent",
+          record.id,
+          whatsapp.reason
+        );
       }
     }
 

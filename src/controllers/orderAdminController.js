@@ -69,18 +69,6 @@ exports.verifyPayment = async (req, res) => {
       await verifyOrderPayment(existing.id);
     }
 
-    const supabase = getSupabase();
-    if (supabase) {
-      await supabase
-        .from("orders")
-        .update({
-          payment_status: "paid",
-          payment_verified: true,
-          payment_verified_at: new Date().toISOString(),
-        })
-        .eq("id", existing.id);
-    }
-
     const whatsapp = await sendOrderConfirmedIfNeeded({
       orderId: existing.id,
       force: !!req.body?.resend,

@@ -49,29 +49,29 @@ async function sendOrderConfirmedIfNeeded({ orderId, orderNum, force = false }) 
     return { sent: false, reason: "supabase_not_configured" };
   }
 
-  let alreadySent = false;
-  const { data: row, error: readErr } = await supabase
-    .from("orders")
-    .select("confirmation_whatsapp_sent")
-    .eq("id", order.id)
-    .maybeSingle();
-
-  if (!readErr && row?.confirmation_whatsapp_sent === true) {
-    alreadySent = true;
-  }
-
-  if (!force && alreadySent) {
-    return { sent: false, reason: "already_sent", order };
-  }
-
   if (isPastConfirmationStage(order)) {
-    if (!alreadySent) {
-      await supabase
-        .from("orders")
-        .update({ confirmation_whatsapp_sent: true })
-        .eq("id", order.id);
-    }
+    await supabase
+      .from("orders")
+      .update({ confirmation_whatsapp_sent: true })
+      .eq("id", order.id)
+      .eq("confirmation_whatsapp_sent", false);
     return { sent: false, reason: "already_out_for_delivery", order };
+  }
+
+  // Claim send slot before WhatsApp — avoids duplicate when admin API + pg_net webhook race.
+  if (!force) {
+    const { data: claimed, error: claimErr } = await supabase
+      .from("orders")
+      .update({ confirmation_whatsapp_sent: true })
+      .eq("id", order.id)
+      .eq("confirmation_whatsapp_sent", false)
+      .select("id")
+      .maybeSingle();
+
+    if (claimErr) throw claimErr;
+    if (!claimed) {
+      return { sent: false, reason: "already_sent", order };
+    }
   }
 
   const to = formatPhoneForWhatsApp(order.phone, order.whatsapp);
@@ -101,12 +101,17 @@ async function sendOrderConfirmedIfNeeded({ orderId, orderNum, force = false }) 
   try {
     await sendTextMessage(to, message);
   } catch (err) {
+    if (!force) {
+      await supabase
+        .from("orders")
+        .update({ confirmation_whatsapp_sent: false })
+        .eq("id", order.id);
+    }
     console.error("sendOrderConfirmed WhatsApp failed", order.id, err?.message);
     return { sent: false, reason: "whatsapp_send_failed", detail: err?.message, order };
   }
 
   const patch = {
-    confirmation_whatsapp_sent: true,
     payment_status: "paid",
     payment_verified: true,
     payment_verified_at: new Date().toISOString(),
