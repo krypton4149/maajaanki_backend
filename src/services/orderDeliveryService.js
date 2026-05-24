@@ -3,6 +3,9 @@ const { sendTextMessage } = require("./whatsappService");
 const orderFlowMessages = require("./orderFlowMessages");
 const orderDashboard = require("./orderDashboardService");
 const {
+  ensureOrderConfirmedBeforeDelivery,
+} = require("./orderConfirmationService");
+const {
   resolveOutForDeliveryRecipients,
 } = require("../utils/whatsAppRecipients");
 
@@ -141,6 +144,11 @@ async function sendOutForDeliveryIfNeeded({ orderId, orderNum, orderRef, force =
         whatsappSent: false,
       };
     }
+  }
+
+  const confirmation = await ensureOrderConfirmedBeforeDelivery({ order });
+  if (confirmation.sent) {
+    console.info("sendOutForDelivery: sent missing Order Confirmed first", order.id);
   }
 
   const message = orderFlowMessages.buildOutForDelivery({

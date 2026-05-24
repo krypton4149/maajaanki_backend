@@ -2,6 +2,7 @@ const { getSupabase } = require("../lib/supabaseClient");
 const { sendTextMessage } = require("./whatsappService");
 const orderFlowMessages = require("./orderFlowMessages");
 const orderDashboard = require("./orderDashboardService");
+const { verifyOrderPayment } = require("./paymentVerificationService");
 
 /**
  * Customer notifications: use delivery phone from checkout, not the WhatsApp
@@ -21,6 +22,14 @@ function formatPhoneForWhatsApp(phone, whatsapp) {
   return waDigits.length >= 10 ? waDigits : null;
 }
 
+function resolveConfirmationRecipient(order) {
+  if (order.orderSource === "whatsapp") {
+    const chatWa = formatPhoneForWhatsApp(null, order.whatsapp);
+    if (chatWa) return chatWa;
+  }
+  return formatPhoneForWhatsApp(order.phone, order.whatsapp);
+}
+
 function isPastConfirmationStage(order) {
   return (
     order.orderStatus === "out_for_delivery" ||
@@ -32,7 +41,6 @@ function isPastConfirmationStage(order) {
 /**
  * Send "Order Confirmed" WhatsApp if payment_verified and not sent yet.
  * Safe to call after Supabase manual verify or API verify.
- * Skips (and marks sent) when order is already out for delivery — do not message after delivery notify.
  */
 async function sendOrderConfirmedIfNeeded({ orderId, orderNum, force = false }) {
   const order = await orderDashboard.getOrderByIdOrNum({ orderId, orderNum });
@@ -47,15 +55,6 @@ async function sendOrderConfirmedIfNeeded({ orderId, orderNum, force = false }) 
   const supabase = getSupabase();
   if (!supabase) {
     return { sent: false, reason: "supabase_not_configured" };
-  }
-
-  if (isPastConfirmationStage(order)) {
-    await supabase
-      .from("orders")
-      .update({ confirmation_whatsapp_sent: true })
-      .eq("id", order.id)
-      .eq("confirmation_whatsapp_sent", false);
-    return { sent: false, reason: "already_out_for_delivery", order };
   }
 
   // Claim send slot before WhatsApp — avoids duplicate when admin API + pg_net webhook race.
@@ -74,8 +73,14 @@ async function sendOrderConfirmedIfNeeded({ orderId, orderNum, force = false }) 
     }
   }
 
-  const to = formatPhoneForWhatsApp(order.phone, order.whatsapp);
+  const to = resolveConfirmationRecipient(order);
   if (!to || to.length < 10) {
+    if (!force) {
+      await supabase
+        .from("orders")
+        .update({ confirmation_whatsapp_sent: false })
+        .eq("id", order.id);
+    }
     return { sent: false, reason: "invalid_phone", order };
   }
 
@@ -141,7 +146,51 @@ async function sendOrderConfirmedIfNeeded({ orderId, orderNum, force = false }) 
   return { sent: true, to, order };
 }
 
+/**
+ * Send Order Confirmed before out-for-delivery when admin skips explicit verify.
+ * Auto-verifies UPI/COD orders that have payment proof but confirmation was never sent.
+ */
+async function ensureOrderConfirmedBeforeDelivery({ orderId, orderNum, order: existingOrder }) {
+  const order =
+    existingOrder ||
+    (await orderDashboard.getOrderByIdOrNum({ orderId, orderNum }));
+  if (!order) {
+    return { sent: false, reason: "order_not_found" };
+  }
+
+  const supabase = getSupabase();
+  if (!supabase) {
+    return { sent: false, reason: "supabase_not_configured" };
+  }
+
+  const { data: row, error: readErr } = await supabase
+    .from("orders")
+    .select("confirmation_whatsapp_sent, payment_verified")
+    .eq("id", order.id)
+    .maybeSingle();
+
+  if (readErr) throw readErr;
+  if (row?.confirmation_whatsapp_sent === true) {
+    return { sent: false, reason: "already_sent", order };
+  }
+
+  if (!order.paymentVerified && !row?.payment_verified) {
+    const isCod = order.paymentMethod === "cod";
+    const hasUtr = !!order.upiTransactionId;
+    if (isCod || hasUtr) {
+      await verifyOrderPayment(order.id);
+      order.paymentVerified = true;
+    } else {
+      return { sent: false, reason: "payment_not_verified", order };
+    }
+  }
+
+  return sendOrderConfirmedIfNeeded({ orderId: order.id, force: false });
+}
+
 module.exports = {
   sendOrderConfirmedIfNeeded,
+  ensureOrderConfirmedBeforeDelivery,
   formatPhoneForWhatsApp,
+  resolveConfirmationRecipient,
 };
