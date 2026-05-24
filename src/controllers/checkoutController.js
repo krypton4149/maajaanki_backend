@@ -2,6 +2,7 @@ const orderService = require("../services/orderService");
 const couponService = require("../services/couponService");
 const checkoutService = require("../services/checkoutService");
 const orderNotification = require("../services/orderNotificationService");
+const gstBreakdown = require("../utils/gstBreakdown");
 const { isSupabaseConfigured } = require("../lib/supabaseClient");
 
 exports.getPaymentMethods = (req, res) => {
@@ -97,6 +98,7 @@ exports.placeOrder = async (req, res) => {
       noteParts.push(`Delivery charge: ₹${calc.deliveryCharge}`);
     }
     noteParts.push(`Total: ₹${calc.finalTotal}`);
+    gstBreakdown.appendGstLines(noteParts, calc.finalTotal);
     noteParts.push(`Payment: ${paymentMethod.toUpperCase()}`);
 
     const phone10 = phone.slice(-10);
@@ -120,6 +122,10 @@ exports.placeOrder = async (req, res) => {
       line_items_note: noteParts.join("\n"),
       subtotal: calc.subtotal,
       discount_amount: calc.discount,
+      delivery_charge: calc.deliveryCharge,
+      cgst: calc.cgst,
+      sgst: calc.sgst,
+      total_gst: calc.totalGst,
       coupon_code: calc.coupon?.code || null,
       total: calc.finalTotal,
       payment_method: paymentMethod,
@@ -160,6 +166,10 @@ exports.placeOrder = async (req, res) => {
         orderNum: inserted.order_num,
         subtotal: calc.subtotal,
         discountAmount: calc.discount,
+        deliveryCharge: calc.deliveryCharge,
+        cgst: calc.cgst,
+        sgst: calc.sgst,
+        totalGst: calc.totalGst,
         couponCode: calc.coupon?.code || null,
         total: calc.finalTotal,
         paymentMethod,

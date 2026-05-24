@@ -119,6 +119,10 @@ exports.createOrder = async ({
   total: totalRupees,
   subtotal: subtotalRupees,
   discount_amount: discountRupees,
+  delivery_charge: deliveryRupees,
+  cgst: cgstRupees,
+  sgst: sgstRupees,
+  total_gst: totalGstRupees,
   coupon_code,
   payment_method,
   payment_status,
@@ -144,6 +148,16 @@ exports.createOrder = async ({
     0,
     Math.round(Number(discountRupees) || 0)
   );
+  const delivery_charge = Math.max(
+    0,
+    Math.round(Number(deliveryRupees) || 0)
+  );
+  const cgst = Math.max(0, Math.round(Number(cgstRupees) || 0));
+  const sgst = Math.max(0, Math.round(Number(sgstRupees) || 0));
+  const total_gst = Math.max(
+    0,
+    Math.round(Number(totalGstRupees) || 0) || cgst + sgst
+  );
 
   const base = {
     customer_name: (customer_name || "Customer").trim().slice(0, 500),
@@ -153,6 +167,10 @@ exports.createOrder = async ({
     total,
     subtotal,
     discount_amount,
+    delivery_charge,
+    cgst,
+    sgst,
+    total_gst,
   };
 
   if (coupon_code) base.coupon_code = String(coupon_code).trim().slice(0, 64);
@@ -193,6 +211,10 @@ exports.createOrder = async ({
             ...inserted,
             subtotal,
             discount_amount,
+            delivery_charge,
+            cgst,
+            sgst,
+            total_gst,
             total,
             coupon_code: base.coupon_code || null,
             payment_method: base.payment_method || null,

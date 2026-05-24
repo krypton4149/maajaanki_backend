@@ -91,7 +91,10 @@ async function sendOrderConfirmedIfNeeded({ orderId, orderNum, force = false }) 
     0,
     (Number(order.subtotal) || 0) - (Number(order.discountAmount) || 0)
   );
-  const deliveryFromTotal = Math.max(0, (Number(order.total) || 0) - foodTotal);
+  const deliveryFromTotal =
+    order.deliveryCharge != null && Number(order.deliveryCharge) > 0
+      ? Number(order.deliveryCharge)
+      : Math.max(0, (Number(order.total) || 0) - foodTotal);
 
   const message = orderFlowMessages.buildOrderConfirmed({
     orderId: orderFlowMessages.formatOrderId(order.orderNum),

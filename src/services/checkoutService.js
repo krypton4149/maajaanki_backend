@@ -1,6 +1,7 @@
 const couponService = require("./couponService");
 const { isQrAvailable } = require("./upiQrService");
 const deliveryCharge = require("../utils/deliveryCharge");
+const gstBreakdown = require("../utils/gstBreakdown");
 
 const PAYMENT_METHODS = {
   cod: {
@@ -90,6 +91,7 @@ async function calculateCheckout({ items, couponCode }) {
     discount,
     coupon,
   });
+  const gst = gstBreakdown.computeGstBreakdown(totals.finalTotal);
 
   return {
     lines,
@@ -97,6 +99,9 @@ async function calculateCheckout({ items, couponCode }) {
     discount: totals.discount,
     deliveryCharge: totals.deliveryCharge,
     finalTotal: totals.finalTotal,
+    cgst: gst.cgst,
+    sgst: gst.sgst,
+    totalGst: gst.totalGst,
     coupon,
     couponError,
   };

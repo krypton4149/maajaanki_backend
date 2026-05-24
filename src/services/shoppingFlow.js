@@ -2,6 +2,7 @@ const couponService = require("./couponService");
 const checkoutService = require("./checkoutService");
 const flowMsg = require("./orderFlowMessages");
 const paymentVerification = require("./paymentVerificationService");
+const gstBreakdown = require("../utils/gstBreakdown");
 
 const sessionStore = require("./whatsappSessionStore");
 
@@ -597,6 +598,7 @@ async function finalizeOrder(from, s, deps, options = {}) {
 
   const { subtotal, discount, deliveryCharge: delivery, finalTotal } =
     computeCartTotals(s.cart, s.coupon);
+  const gst = gstBreakdown.computeGstBreakdown(finalTotal);
   const paymentMethod = s.paymentMethod || "cod";
   const paymentStatus = pendingVerification
     ? "pending_verification"
@@ -625,8 +627,9 @@ async function finalizeOrder(from, s, deps, options = {}) {
   if (delivery > 0) {
     noteParts.push(`Delivery charge: ₹${delivery}`);
   }
+  noteParts.push(`Total: ₹${finalTotal}`);
+  gstBreakdown.appendGstLines(noteParts, finalTotal);
   noteParts.push(
-    `Total: ₹${finalTotal}`,
     `Payment: ${paymentMethod.toUpperCase()}`,
     pendingVerification ? "Status: pending payment verification" : null,
     s.paymentProof?.utr ? `UTR: ${s.paymentProof.utr}` : null,
@@ -645,6 +648,10 @@ async function finalizeOrder(from, s, deps, options = {}) {
     line_items_note: noteParts.filter(Boolean).join("\n").slice(0, 4000),
     subtotal,
     discount_amount: discount,
+    delivery_charge: delivery,
+    cgst: gst.cgst,
+    sgst: gst.sgst,
+    total_gst: gst.totalGst,
     coupon_code: s.coupon?.code || null,
     total: finalTotal,
     payment_method: paymentMethod,

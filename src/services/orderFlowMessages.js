@@ -1,5 +1,6 @@
 const checkoutService = require("./checkoutService");
 const deliveryCharge = require("../utils/deliveryCharge");
+const gstBreakdown = require("../utils/gstBreakdown");
 
 const DIVIDER = "──────────────";
 
@@ -36,6 +37,7 @@ function appendTotalsLines(lines, totals, coupon) {
     lines.push("Delivery = FREE");
   }
   lines.push(`Total = ₹${finalTotal}`);
+  gstBreakdown.appendGstLines(lines, finalTotal);
 }
 
 function buildCartSummary(cart, coupon) {
@@ -195,6 +197,7 @@ function buildOrderPendingVerification({
     totalLines.push(`Delivery charge: ₹${delivery}`);
   }
   totalLines.push(`Total: ₹${total}`);
+  gstBreakdown.appendGstLines(totalLines, total);
 
   return [
     "⏳ Order received — awaiting verification",
@@ -254,6 +257,7 @@ function buildOrderConfirmed({
     lines.push(`Delivery charge: ₹${delivery}`);
   }
   lines.push(`Total: ₹${total}`);
+  gstBreakdown.appendGstLines(lines, total);
 
   lines.push(
     `Payment: ${payment}`,
