@@ -25,7 +25,7 @@ const MENU_SECTIONS = [
       return [
         header("🍱 THALIS"),
         "",
-        "▸ Jaanki Special Thali — ₹560",
+        "▸ Jaanki Special Thali — ₹525",
         "  Includes:",
         "  • Kaju Masala",
         "  • Paneer Gravy",

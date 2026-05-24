@@ -5,7 +5,7 @@ const BY_SECTION = {
   thalis: [
     {
       name: "Jaanki Special Thali",
-      priceRupees: 560,
+      priceRupees: 525,
       includes: [
         "Kaju Masala",
         "Paneer Gravy",
