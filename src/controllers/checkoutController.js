@@ -97,8 +97,8 @@ exports.placeOrder = async (req, res) => {
     if (calc.deliveryCharge > 0) {
       noteParts.push(`Delivery charge: ₹${calc.deliveryCharge}`);
     }
+    gstBreakdown.appendGstLines(noteParts, calc);
     noteParts.push(`Total: ₹${calc.finalTotal}`);
-    gstBreakdown.appendGstLines(noteParts, calc.finalTotal);
     noteParts.push(`Payment: ${paymentMethod.toUpperCase()}`);
 
     const phone10 = phone.slice(-10);

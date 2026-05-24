@@ -26,7 +26,7 @@ function cartLinesPlain(cart) {
 }
 
 function appendTotalsLines(lines, totals, coupon) {
-  const { subtotal, discount, deliveryCharge: delivery, finalTotal } = totals;
+  const { subtotal, discount, deliveryCharge: delivery, finalTotal, totalGst } = totals;
   lines.push(`Subtotal = ₹${subtotal}`);
   if (coupon?.code && discount > 0) {
     lines.push(`Discount = -₹${discount}`);
@@ -36,8 +36,8 @@ function appendTotalsLines(lines, totals, coupon) {
   } else {
     lines.push("Delivery = FREE");
   }
+  gstBreakdown.appendGstLines(lines, totals);
   lines.push(`Total = ₹${finalTotal}`);
-  gstBreakdown.appendGstLines(lines, finalTotal);
 }
 
 function buildCartSummary(cart, coupon) {
@@ -51,6 +51,9 @@ function buildCartSummary(cart, coupon) {
     subtotal: totals.subtotal,
     discount: totals.discount,
     deliveryCharge: totals.deliveryCharge,
+    cgst: totals.cgst,
+    sgst: totals.sgst,
+    totalGst: totals.totalGst,
     finalTotal: totals.finalTotal,
   };
 }
@@ -60,7 +63,8 @@ function computeTotals(cart, coupon) {
   const discount = coupon?.discount
     ? Math.min(subtotal, Number(coupon.discount) || 0)
     : 0;
-  return deliveryCharge.applyDeliveryToTotals({ subtotal, discount, coupon });
+  const base = deliveryCharge.applyDeliveryToTotals({ subtotal, discount, coupon });
+  return gstBreakdown.applyGstToDeliveryTotals(base);
 }
 
 function buildCartMenu(cart, coupon) {
@@ -191,13 +195,23 @@ function buildOrderPendingVerification({
   total,
   utr,
   deliveryCharge: delivery = 0,
+  cgst = 0,
+  sgst = 0,
+  totalGst = 0,
 }) {
   const totalLines = [];
   if (delivery > 0) {
     totalLines.push(`Delivery charge: ₹${delivery}`);
   }
+  gstBreakdown.appendGstLines(totalLines, {
+    cgst,
+    sgst,
+    totalGst,
+    cgstRate: gstBreakdown.CGST_RATE,
+    sgstRate: gstBreakdown.SGST_RATE,
+    totalGstRate: gstBreakdown.TOTAL_GST_RATE,
+  });
   totalLines.push(`Total: ₹${total}`);
-  gstBreakdown.appendGstLines(totalLines, total);
 
   return [
     "⏳ Order received — awaiting verification",
@@ -236,6 +250,9 @@ function buildOrderConfirmed({
   coupon,
   discount,
   deliveryCharge: delivery = 0,
+  cgst = 0,
+  sgst = 0,
+  totalGst = 0,
 }) {
   const payment =
     paymentMethod === "upi" ? "UPI" : "Cash on Delivery";
@@ -256,8 +273,15 @@ function buildOrderConfirmed({
   if (delivery > 0) {
     lines.push(`Delivery charge: ₹${delivery}`);
   }
+  gstBreakdown.appendGstLines(lines, {
+    cgst,
+    sgst,
+    totalGst,
+    cgstRate: gstBreakdown.CGST_RATE,
+    sgstRate: gstBreakdown.SGST_RATE,
+    totalGstRate: gstBreakdown.TOTAL_GST_RATE,
+  });
   lines.push(`Total: ₹${total}`);
-  gstBreakdown.appendGstLines(lines, total);
 
   lines.push(
     `Payment: ${payment}`,

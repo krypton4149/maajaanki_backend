@@ -91,17 +91,17 @@ async function calculateCheckout({ items, couponCode }) {
     discount,
     coupon,
   });
-  const gst = gstBreakdown.computeGstBreakdown(totals.finalTotal);
+  const withGst = gstBreakdown.applyGstToDeliveryTotals(totals);
 
   return {
     lines,
-    subtotal: totals.subtotal,
-    discount: totals.discount,
-    deliveryCharge: totals.deliveryCharge,
-    finalTotal: totals.finalTotal,
-    cgst: gst.cgst,
-    sgst: gst.sgst,
-    totalGst: gst.totalGst,
+    subtotal: withGst.subtotal,
+    discount: withGst.discount,
+    deliveryCharge: withGst.deliveryCharge,
+    finalTotal: withGst.finalTotal,
+    cgst: withGst.cgst,
+    sgst: withGst.sgst,
+    totalGst: withGst.totalGst,
     coupon,
     couponError,
   };

@@ -111,6 +111,9 @@ async function sendOrderConfirmedIfNeeded({ orderId, orderNum, force = false }) 
       : null,
     discount: order.discountAmount || 0,
     deliveryCharge: deliveryFromTotal,
+    cgst: order.cgst ?? 0,
+    sgst: order.sgst ?? 0,
+    totalGst: order.totalGst ?? 0,
   });
 
   try {

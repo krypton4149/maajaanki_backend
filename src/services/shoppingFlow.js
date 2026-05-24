@@ -596,9 +596,16 @@ async function finalizeOrder(from, s, deps, options = {}) {
   const phone10 =
     phoneDigits.length >= 10 ? phoneDigits.slice(-10) : phoneDigits;
 
-  const { subtotal, discount, deliveryCharge: delivery, finalTotal } =
-    computeCartTotals(s.cart, s.coupon);
-  const gst = gstBreakdown.computeGstBreakdown(finalTotal);
+  const totals = computeCartTotals(s.cart, s.coupon);
+  const {
+    subtotal,
+    discount,
+    deliveryCharge: delivery,
+    finalTotal,
+    cgst,
+    sgst,
+    totalGst,
+  } = totals;
   const paymentMethod = s.paymentMethod || "cod";
   const paymentStatus = pendingVerification
     ? "pending_verification"
@@ -627,8 +634,8 @@ async function finalizeOrder(from, s, deps, options = {}) {
   if (delivery > 0) {
     noteParts.push(`Delivery charge: ₹${delivery}`);
   }
+  gstBreakdown.appendGstLines(noteParts, totals);
   noteParts.push(`Total: ₹${finalTotal}`);
-  gstBreakdown.appendGstLines(noteParts, finalTotal);
   noteParts.push(
     `Payment: ${paymentMethod.toUpperCase()}`,
     pendingVerification ? "Status: pending payment verification" : null,
@@ -649,9 +656,9 @@ async function finalizeOrder(from, s, deps, options = {}) {
     subtotal,
     discount_amount: discount,
     delivery_charge: delivery,
-    cgst: gst.cgst,
-    sgst: gst.sgst,
-    total_gst: gst.totalGst,
+    cgst,
+    sgst,
+    total_gst: totalGst,
     coupon_code: s.coupon?.code || null,
     total: finalTotal,
     payment_method: paymentMethod,
@@ -678,6 +685,9 @@ async function finalizeOrder(from, s, deps, options = {}) {
         total: finalTotal,
         utr: s.paymentProof?.utr,
         deliveryCharge: delivery,
+        cgst,
+        sgst,
+        totalGst,
       })
     );
   } else {
@@ -691,6 +701,9 @@ async function finalizeOrder(from, s, deps, options = {}) {
         coupon: s.coupon,
         discount,
         deliveryCharge: delivery,
+        cgst,
+        sgst,
+        totalGst,
       })
     );
   }
