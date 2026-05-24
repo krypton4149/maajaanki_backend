@@ -1,4 +1,5 @@
 const checkoutService = require("./checkoutService");
+const deliveryCharge = require("../utils/deliveryCharge");
 
 const DIVIDER = "──────────────";
 
@@ -23,17 +24,33 @@ function cartLinesPlain(cart) {
   });
 }
 
-function buildCartSummary(cart, coupon) {
-  const { subtotal, discount, finalTotal } = computeTotals(cart, coupon);
-  const lines = ["🛒 Your Cart", "", ...cartLinesPlain(cart), "", `Subtotal = ₹${subtotal}`];
-
+function appendTotalsLines(lines, totals, coupon) {
+  const { subtotal, discount, deliveryCharge: delivery, finalTotal } = totals;
+  lines.push(`Subtotal = ₹${subtotal}`);
   if (coupon?.code && discount > 0) {
-    lines.push(`Discount = -₹${discount}`, `Total = ₹${finalTotal}`);
-  } else if (coupon?.code) {
-    lines.push(`Total = ₹${finalTotal}`);
+    lines.push(`Discount = -₹${discount}`);
   }
+  if (delivery > 0) {
+    lines.push(`Delivery charge = ₹${delivery}`);
+  } else {
+    lines.push("Delivery = FREE");
+  }
+  lines.push(`Total = ₹${finalTotal}`);
+}
 
-  return { text: lines.join("\n"), subtotal, discount, finalTotal };
+function buildCartSummary(cart, coupon) {
+  const totals = computeTotals(cart, coupon);
+  const lines = ["🛒 Your Cart", "", ...cartLinesPlain(cart), ""];
+  appendTotalsLines(lines, totals, coupon);
+  lines.push("", deliveryCharge.deliveryPolicyLine());
+
+  return {
+    text: lines.join("\n"),
+    subtotal: totals.subtotal,
+    discount: totals.discount,
+    deliveryCharge: totals.deliveryCharge,
+    finalTotal: totals.finalTotal,
+  };
 }
 
 function computeTotals(cart, coupon) {
@@ -41,12 +58,7 @@ function computeTotals(cart, coupon) {
   const discount = coupon?.discount
     ? Math.min(subtotal, Number(coupon.discount) || 0)
     : 0;
-  const finalTotal = Math.max(0, Math.round(subtotal - discount));
-  return {
-    subtotal: Math.round(subtotal),
-    discount: Math.round(discount),
-    finalTotal,
-  };
+  return deliveryCharge.applyDeliveryToTotals({ subtotal, discount, coupon });
 }
 
 function buildCartMenu(cart, coupon) {
@@ -87,13 +99,16 @@ function buildInvalidCouponMessage() {
   ].join("\n");
 }
 
-function buildCouponApplied({ label, saved, finalTotal }) {
+function buildCouponApplied({ label, saved, finalTotal, deliveryCharge: delivery = 0 }) {
+  const deliveryLine =
+    delivery > 0 ? `Delivery charge = ₹${delivery}` : "Delivery = FREE";
   return [
     "✅ Coupon Applied",
     "",
     label || "Discount active",
     "",
     `You Saved ₹${saved}`,
+    deliveryLine,
     `New Total = ₹${finalTotal}`,
     "",
     DIVIDER,
@@ -168,7 +183,19 @@ function buildUpiPaymentShort({ amount }) {
   ].join("\n");
 }
 
-function buildOrderPendingVerification({ orderId, cart, total, utr }) {
+function buildOrderPendingVerification({
+  orderId,
+  cart,
+  total,
+  utr,
+  deliveryCharge: delivery = 0,
+}) {
+  const totalLines = [];
+  if (delivery > 0) {
+    totalLines.push(`Delivery charge: ₹${delivery}`);
+  }
+  totalLines.push(`Total: ₹${total}`);
+
   return [
     "⏳ Order received — awaiting verification",
     "",
@@ -177,7 +204,7 @@ function buildOrderPendingVerification({ orderId, cart, total, utr }) {
     "Items:",
     ...cartLinesPlain(cart),
     "",
-    `Total: ₹${total}`,
+    ...totalLines,
     "Payment: UPI",
     "",
     `Txn ID submitted: ${utr || "—"}`,
@@ -205,6 +232,7 @@ function buildOrderConfirmed({
   paymentMethod,
   coupon,
   discount,
+  deliveryCharge: delivery = 0,
 }) {
   const payment =
     paymentMethod === "upi" ? "UPI" : "Cash on Delivery";
@@ -217,12 +245,15 @@ function buildOrderConfirmed({
     "Items:",
     ...cartLinesPlain(cart),
     "",
-    `Total: ₹${total}`,
   ];
 
   if (coupon?.code && discount > 0) {
     lines.push(`Coupon: ${coupon.code} (saved ₹${discount})`);
   }
+  if (delivery > 0) {
+    lines.push(`Delivery charge: ₹${delivery}`);
+  }
+  lines.push(`Total: ₹${total}`);
 
   lines.push(
     `Payment: ${payment}`,
@@ -305,8 +336,15 @@ function buildAddedToCart(added, totalsWithCoupon) {
     "",
     ...added.map((a) => `• ${a.qty} × ${a.name}`),
   ];
-  if (totalsWithCoupon?.finalTotal != null && totalsWithCoupon.coupon) {
-    parts.push("", `Cart total: ₹${totalsWithCoupon.finalTotal} (coupon applied)`);
+  if (totalsWithCoupon?.finalTotal != null) {
+    let line = `Cart total: ₹${totalsWithCoupon.finalTotal}`;
+    if (totalsWithCoupon.coupon?.code) line += " (coupon applied)";
+    if (totalsWithCoupon.deliveryCharge > 0) {
+      line += ` · incl. ₹${totalsWithCoupon.deliveryCharge} delivery`;
+    } else if (totalsWithCoupon.deliveryCharge === 0) {
+      line += " · free delivery";
+    }
+    parts.push("", line);
   }
   parts.push(
     "",
@@ -319,6 +357,8 @@ function buildAddedToCart(added, totalsWithCoupon) {
 function buildWelcomeHint() {
   return [
     "Namaste 🙏 Welcome to Maa Jaanki Restaurant.",
+    "",
+    deliveryCharge.deliveryPolicyLine(),
     "",
     "Type *MENU* to browse categories.",
     "Type an *item number* to add (e.g. *3*).",

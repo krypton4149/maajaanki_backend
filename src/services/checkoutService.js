@@ -1,5 +1,6 @@
 const couponService = require("./couponService");
 const { isQrAvailable } = require("./upiQrService");
+const deliveryCharge = require("../utils/deliveryCharge");
 
 const PAYMENT_METHODS = {
   cod: {
@@ -84,13 +85,18 @@ async function calculateCheckout({ items, couponCode }) {
     }
   }
 
-  const finalTotal = roundRupees(Math.max(0, subtotal - discount));
+  const totals = deliveryCharge.applyDeliveryToTotals({
+    subtotal,
+    discount,
+    coupon,
+  });
 
   return {
     lines,
-    subtotal,
-    discount,
-    finalTotal,
+    subtotal: totals.subtotal,
+    discount: totals.discount,
+    deliveryCharge: totals.deliveryCharge,
+    finalTotal: totals.finalTotal,
     coupon,
     couponError,
   };

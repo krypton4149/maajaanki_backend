@@ -5,6 +5,7 @@ const {
   sendPayNowButton,
   sendQuantityPicker,
 } = require("../services/whatsappService");
+const { deliveryPolicyLine } = require("../utils/deliveryCharge");
 const { MENU_SECTIONS, getSectionById } = require("../data/jaankiMenu");
 const menuDbService = require("../services/menuDbService");
 const shoppingFlow = require("../services/shoppingFlow");
@@ -189,6 +190,8 @@ exports.handleIncomingMessage = async (message) => {
     from,
     [
       "Namaste 🙏 Maa Jaanki Restaurant.",
+      "",
+      deliveryPolicyLine(),
       "",
       "Type MENU for categories.",
       "Type an item *number* to add · CART to checkout (COD / UPI).",

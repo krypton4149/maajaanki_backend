@@ -87,6 +87,12 @@ async function sendOrderConfirmedIfNeeded({ orderId, orderNum, force = false }) 
   const paymentMethod =
     order.paymentMethod === "cod" ? "cod" : order.paymentMethod || "upi";
 
+  const foodTotal = Math.max(
+    0,
+    (Number(order.subtotal) || 0) - (Number(order.discountAmount) || 0)
+  );
+  const deliveryFromTotal = Math.max(0, (Number(order.total) || 0) - foodTotal);
+
   const message = orderFlowMessages.buildOrderConfirmed({
     orderId: orderFlowMessages.formatOrderId(order.orderNum),
     cart: (order.items || []).map((i) => ({
@@ -101,6 +107,7 @@ async function sendOrderConfirmedIfNeeded({ orderId, orderNum, force = false }) 
       ? { code: order.couponCode, discount: order.discountAmount }
       : null,
     discount: order.discountAmount || 0,
+    deliveryCharge: deliveryFromTotal,
   });
 
   try {

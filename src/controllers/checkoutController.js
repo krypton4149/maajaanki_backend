@@ -93,6 +93,9 @@ exports.placeOrder = async (req, res) => {
         `Discount: -₹${calc.discount}`
       );
     }
+    if (calc.deliveryCharge > 0) {
+      noteParts.push(`Delivery charge: ₹${calc.deliveryCharge}`);
+    }
     noteParts.push(`Total: ₹${calc.finalTotal}`);
     noteParts.push(`Payment: ${paymentMethod.toUpperCase()}`);
 

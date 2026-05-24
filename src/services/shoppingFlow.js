@@ -183,13 +183,10 @@ async function addLinesToCart(from, s, added, deps, errors = []) {
   s.cart.push(...added);
   await refreshCouponOnCart(s);
   await sessionStore.set(from, s);
-  const totals = s.coupon ? computeCartTotals(s.cart, s.coupon) : null;
+  const totals = computeCartTotals(s.cart, s.coupon);
   await deps.sendTextMessage(
     from,
-    flowMsg.buildAddedToCart(
-      added,
-      totals ? { finalTotal: totals.finalTotal, coupon: s.coupon } : null
-    )
+    flowMsg.buildAddedToCart(added, { ...totals, coupon: s.coupon })
   );
   if (errors.length) {
     await deps.sendTextMessage(
@@ -241,13 +238,10 @@ async function finishEachItemPick(from, s, deps) {
   await refreshCouponOnCart(s);
   await sessionStore.set(from, s);
 
-  const totals = s.coupon ? computeCartTotals(s.cart, s.coupon) : null;
+  const totals = computeCartTotals(s.cart, s.coupon);
   await deps.sendTextMessage(
     from,
-    flowMsg.buildAddedToCart(
-      added,
-      totals ? { finalTotal: totals.finalTotal, coupon: s.coupon } : null
-    )
+    flowMsg.buildAddedToCart(added, { ...totals, coupon: s.coupon })
   );
   return true;
 }
@@ -344,13 +338,10 @@ async function confirmPendingPick(from, s, deps) {
   await refreshCouponOnCart(s);
   await sessionStore.set(from, s);
 
-  const totals = s.coupon ? computeCartTotals(s.cart, s.coupon) : null;
+  const totals = computeCartTotals(s.cart, s.coupon);
   await deps.sendTextMessage(
     from,
-    flowMsg.buildAddedToCart(
-      added,
-      totals ? { finalTotal: totals.finalTotal, coupon: s.coupon } : null
-    )
+    flowMsg.buildAddedToCart(added, { ...totals, coupon: s.coupon })
   );
   return true;
 }
@@ -488,6 +479,7 @@ async function applyCouponToSession(s, code) {
       label: result.label,
       saved: totals.discount,
       finalTotal: totals.finalTotal,
+      deliveryCharge: totals.deliveryCharge,
     }),
     phase: "post_coupon",
   };
@@ -603,7 +595,8 @@ async function finalizeOrder(from, s, deps, options = {}) {
   const phone10 =
     phoneDigits.length >= 10 ? phoneDigits.slice(-10) : phoneDigits;
 
-  const { subtotal, discount, finalTotal } = computeCartTotals(s.cart, s.coupon);
+  const { subtotal, discount, deliveryCharge: delivery, finalTotal } =
+    computeCartTotals(s.cart, s.coupon);
   const paymentMethod = s.paymentMethod || "cod";
   const paymentStatus = pendingVerification
     ? "pending_verification"
@@ -628,6 +621,9 @@ async function finalizeOrder(from, s, deps, options = {}) {
       `Coupon: ${s.coupon.code} (${s.coupon.label || ""})`,
       `Discount: -₹${discount}`
     );
+  }
+  if (delivery > 0) {
+    noteParts.push(`Delivery charge: ₹${delivery}`);
   }
   noteParts.push(
     `Total: ₹${finalTotal}`,
@@ -674,6 +670,7 @@ async function finalizeOrder(from, s, deps, options = {}) {
         cart: s.cart,
         total: finalTotal,
         utr: s.paymentProof?.utr,
+        deliveryCharge: delivery,
       })
     );
   } else {
@@ -686,6 +683,7 @@ async function finalizeOrder(from, s, deps, options = {}) {
         paymentMethod,
         coupon: s.coupon,
         discount,
+        deliveryCharge: delivery,
       })
     );
   }
@@ -875,10 +873,10 @@ exports.tryHandle = async (from, rawText, deps) => {
       s.cart.push(...added);
       await refreshCouponOnCart(s);
       await sessionStore.set(from, s);
-      const totals = s.coupon ? computeCartTotals(s.cart, s.coupon) : null;
+      const totals = computeCartTotals(s.cart, s.coupon);
       await sendTextMessage(
         from,
-        flowMsg.buildAddedToCart(added, totals ? { finalTotal: totals.finalTotal, coupon: s.coupon } : null)
+        flowMsg.buildAddedToCart(added, { ...totals, coupon: s.coupon })
       );
       if (errors.length) {
         await sendTextMessage(

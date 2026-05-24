@@ -4,6 +4,7 @@
  */
 
 const { formatCategoryHeader } = require("../utils/menuMessageFormat");
+const { deliveryPolicyLine } = require("../utils/deliveryCharge");
 
 const line = (c = "─") => c.repeat(22);
 
@@ -353,6 +354,8 @@ function getSectionById(id) {
 function getWelcomeBody() {
   return [
     "Namaste 🙏 Welcome to Maa Jaanki Restaurant.",
+    "",
+    deliveryPolicyLine(),
     "",
     "🍽️ Tap Browse menu → pick a category → add items",
     "   Example: 2 x Veg Momos",
