@@ -46,6 +46,19 @@ exports.onMenuOpened = async (from) => {
   if (!s) return;
 
   const phase = s.phase || "shop";
+  // Do not reset mid-flow steps (quantity pick, checkout, payment).
+  if (
+    phase === "pick_qty" ||
+    phase === "cart_menu" ||
+    phase === "coupon_enter" ||
+    phase === "post_coupon" ||
+    phase === "checkout_details" ||
+    phase === "payment_select" ||
+    phase === "upi_await_proof"
+  ) {
+    return;
+  }
+
   if (phase === "shop" && (!s.cart || s.cart.length === 0)) {
     await sessionStore.remove(from);
     return;
@@ -718,6 +731,53 @@ exports.tryHandlePaymentProof = async (from, message, deps) => {
   return false;
 };
 
+async function handlePickQuantityPhase(from, s, text, deps) {
+  const { sendTextMessage } = deps;
+
+  if (/^cancel$/i.test(text)) {
+    s.phase = "shop";
+    delete s.pendingPick;
+    await sessionStore.set(from, s);
+    await sendTextMessage(
+      from,
+      "Cancelled.\n\nType an *item number* to add, or *MENU* / *CART*."
+    );
+    return true;
+  }
+
+  if (/^add$/i.test(text)) {
+    await confirmPendingPick(from, s, deps);
+    return true;
+  }
+
+  const qtyTyped = parseInt(text, 10);
+  if (/^\d+$/.test(text) && qtyTyped >= 1 && qtyTyped <= 99) {
+    if (isEachItemQtyMode(s.pendingPick)) {
+      await applyQuantityForCurrentItem(from, s, qtyTyped, deps);
+      return true;
+    }
+    s.pendingPick.qty = qtyTyped;
+    await sessionStore.set(from, s);
+    await promptQuantityPicker(from, s, deps);
+    return true;
+  }
+
+  await sendTextMessage(
+    from,
+    isEachItemQtyMode(s.pendingPick)
+      ? "*Type quantity* for this item (e.g. 2). Next item comes after.\n*CANCEL* to go back."
+      : "*Type quantity* (e.g. 2), then tap *Add to cart* or reply *ADD*.\n*CANCEL* to go back."
+  );
+  return true;
+}
+
+/** Handle quantity reply when session is in pick_qty (fallback if main tryHandle missed). */
+exports.tryHandleQuantityReply = async (from, rawText, deps) => {
+  const s = await sessionStore.get(from);
+  if (!s || s.phase !== "pick_qty" || !s.pendingPick) return false;
+  return handlePickQuantityPhase(from, s, (rawText || "").trim(), deps);
+};
+
 /**
  * @returns {Promise<boolean>}
  */
@@ -849,42 +909,17 @@ exports.tryHandle = async (from, rawText, deps) => {
   }
 
   // —— Pick quantity for selected item ——
-  if (s.phase === "pick_qty" && s.pendingPick) {
-    if (/^cancel$/i.test(text)) {
+  if (s.phase === "pick_qty") {
+    if (!s.pendingPick) {
       s.phase = "shop";
-      delete s.pendingPick;
       await sessionStore.set(from, s);
       await sendTextMessage(
         from,
-        "Cancelled.\n\nType an *item number* to add, or *MENU* / *CART*."
+        "Session expired for that item.\n\nType an *item number* to add again, or *MENU*."
       );
       return true;
     }
-
-    if (/^add$/i.test(text)) {
-      await confirmPendingPick(from, s, deps);
-      return true;
-    }
-
-    const qtyTyped = parseInt(text, 10);
-    if (/^\d+$/.test(text) && qtyTyped >= 1 && qtyTyped <= 99) {
-      if (isEachItemQtyMode(s.pendingPick)) {
-        await applyQuantityForCurrentItem(from, s, qtyTyped, deps);
-        return true;
-      }
-      s.pendingPick.qty = qtyTyped;
-      await sessionStore.set(from, s);
-      await promptQuantityPicker(from, s, deps);
-      return true;
-    }
-
-    await sendTextMessage(
-      from,
-      isEachItemQtyMode(s.pendingPick)
-        ? "*Type quantity* for this item (e.g. 2). Next item comes after.\n*CANCEL* to go back."
-        : "*Type quantity* (e.g. 2), then tap *Add to cart* or reply *ADD*.\n*CANCEL* to go back."
-    );
-    return true;
+    return handlePickQuantityPhase(from, s, text, deps);
   }
 
   // —— Cart menu: coupon or checkout ——

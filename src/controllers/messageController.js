@@ -163,6 +163,15 @@ exports.handleIncomingMessage = async (message) => {
     return;
   }
 
+  const qtyHandled = await shoppingFlow.tryHandleQuantityReply(
+    from,
+    text,
+    shoppingDeps(from)
+  );
+  if (qtyHandled) {
+    return;
+  }
+
   const looksLikeItemPick = /^[\d\s]+$/.test(String(text || "").trim());
   if (looksLikeItemPick) {
     return sendTextMessage(

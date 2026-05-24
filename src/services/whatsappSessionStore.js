@@ -4,7 +4,31 @@ const memory = new Map();
 const TTL_MS = 24 * 60 * 60 * 1000;
 
 function normalizeId(whatsappId) {
+  const digits = String(whatsappId || "").replace(/\D/g, "");
+  if (!digits) return String(whatsappId || "");
+  // Canonical key: 91 + last 10 digits (avoids 9198… vs 98… mismatches between requests).
+  if (digits.length >= 10) {
+    return `91${digits.slice(-10)}`;
+  }
+  return digits;
+}
+
+function legacyNormalizeId(whatsappId) {
   return String(whatsappId || "").replace(/\D/g, "").slice(-15) || String(whatsappId || "");
+}
+
+async function loadFromSupabase(supabase, id) {
+  const { data, error } = await supabase
+    .from("whatsapp_sessions")
+    .select("state, updated_at")
+    .eq("whatsapp_id", id)
+    .maybeSingle();
+
+  if (error) {
+    console.error("whatsapp_session get", error.message);
+    return null;
+  }
+  return data;
 }
 
 /**
@@ -18,15 +42,18 @@ async function get(whatsappId) {
   const supabase = getSupabase();
   if (!supabase) return null;
 
-  const { data, error } = await supabase
-    .from("whatsapp_sessions")
-    .select("state, updated_at")
-    .eq("whatsapp_id", id)
-    .maybeSingle();
+  let data = await loadFromSupabase(supabase, id);
 
-  if (error) {
-    console.error("whatsapp_session get", error.message);
-    return null;
+  let migratedFromLegacy = false;
+  if (!data?.state) {
+    const legacyId = legacyNormalizeId(whatsappId);
+    if (legacyId && legacyId !== id) {
+      data = await loadFromSupabase(supabase, legacyId);
+      if (data?.state && typeof data.state === "object") {
+        migratedFromLegacy = true;
+        await supabase.from("whatsapp_sessions").delete().eq("whatsapp_id", legacyId);
+      }
+    }
   }
 
   if (!data?.state || typeof data.state !== "object") return null;
@@ -39,20 +66,27 @@ async function get(whatsappId) {
 
   const state = { ...data.state };
   memory.set(id, state);
+  if (migratedFromLegacy) {
+    await set(whatsappId, state);
+  }
   return state;
 }
 
 async function set(whatsappId, state) {
   const id = normalizeId(whatsappId);
-  memory.set(id, state);
+  const snapshot = JSON.parse(JSON.stringify(state));
+  memory.set(id, snapshot);
 
   const supabase = getSupabase();
-  if (!supabase) return;
+  if (!supabase) {
+    console.warn("whatsapp_session set: Supabase not configured — session is in-memory only");
+    return;
+  }
 
   const { error } = await supabase.from("whatsapp_sessions").upsert(
     {
       whatsapp_id: id,
-      state,
+      state: snapshot,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "whatsapp_id" }
